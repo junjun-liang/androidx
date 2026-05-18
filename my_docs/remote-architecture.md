@@ -1395,4 +1395,111 @@ compose/remote/
 │   │   ├── Operation.java             # 操作接口
 │   │   ├── PaintContext.java          # 绘制上下文
 │   │   ├── PaintOperation.java        # 绘制操作
-│   │   ├── RemoteClock.java
+│   │   ├── RemoteClock.java           # 时钟抽象
+│   │   ├── LayoutCompute.java         # 布局计算
+│   │   ├── LayoutCallback.java        # 布局回调
+│   │   ├── Limits.java                # 常量限制
+│   │   ├── MatrixAccess.java          # 矩阵访问
+│   │   ├── RemotePathBase.java        # 路径基类
+│   │   ├── RcProfiles.java            # Profile 定义
+│   │   ├── SystemClock.java           # 系统时钟
+│   │   ├── SystemInfo.java            # 系统信息
+│   │   ├── TimeVariables.java         # 时间变量
+│   │   ├── TouchListener.java         # 触摸监听
+│   │   └── operations/                # 操作实现 (100+ 文件)
+│   │       ├── layout/                # 布局操作
+│   │       │   ├── managers/          # 布局管理器
+│   │       │   ├── modifiers/         # Modifier 操作
+│   │       │   └── animation/         # 动画操作
+│   │       ├── matrix/                # 矩阵操作
+│   │       ├── utilities/             # 工具类
+│   │       └── loom/                  # 模板/宏系统
+│   └── build.gradle
+│
+├── remote-core-testutils/             # 测试工具
+│   └── build.gradle
+│
+├── remote-creation-core/              # 创建核心 (Layer 2)
+│   ├── api/
+│   │   ├── current.txt
+│   │   └── restricted_current.txt
+│   └── build.gradle
+│
+├── remote-creation/                   # 创建 API (Layer 3)
+│   ├── api/
+│   │   ├── current.txt
+│   │   ├── res-current.txt
+│   │   └── restricted_current.txt
+│   ├── doc/
+│   │   ├── JAVA_PROCEDURAL_PATTERNS.md    # Java API 模式
+│   │   ├── KOTLIN_DSL_PATTERNS.md         # Kotlin DSL 模式
+│   │   └── MODIFIER_REGISTRY.md           # Modifier 注册指南
+│   │   └── guides/
+│   │       ├── COMPONENTS_GUIDE.md        # 组件开发指南
+│   │       ├── COMPOSE_COMPONENTS_GUIDE.md # Compose 集成指南
+│   │       ├── CREATION_DEMO_GUIDE.md     # 演示开发指南
+│   │       ├── DRAW_TEXT_ANCHORED_GUIDE.md # 锚定文本指南
+│   │       ├── LOOP_GUIDE.md              # 循环指南
+│   │       ├── PARTICLE_SYSTEM_GUIDE.md   # 粒子系统指南
+│   │       ├── PATH_EXPRESSION_GUIDE.md   # 路径表达式指南
+│   │       ├── PROCEDURAL_COMPONENTS_GUIDE.md # 过程式组件指南
+│   │       └── TOUCH_GUIDE.md             # 触摸指南
+│   ├── src/
+│   │   ├── androidDeviceTest/           # 设备测试
+│   │   └── androidMain/                 # Android 主代码
+│   │       ├── java/androidx/compose/remote/creation/
+│   │       │   ├── RemoteComposeWriter.java   # Java 过程式 API
+│   │       │   ├── RemoteComposeContext.kt    # Kotlin DSL 入口
+│   │       │   ├── RecordingModifier.java     # Modifier 记录器
+│   │       │   ├── RemoteModifier.kt          # 远程 Modifier
+│   │       │   ├── RcPaint.java               # 画笔
+│   │       │   ├── RcShader.java              # 着色器
+│   │       │   ├── RcTypes.kt                 # 远程类型
+│   │       │   ├── dsl/                       # DSL 定义
+│   │       │   │   ├── Modifier.kt            # Modifier DSL
+│   │       │   │   ├── RcScope.kt             # 作用域
+│   │       │   │   └── ...
+│   │       │   └── modifiers/                 # Modifier 实现
+│   │       └── res/                         # 资源文件
+│   └── build.gradle
+│
+├── remote-creation-compose/           # Compose 集成 (Layer 4)
+│   ├── api/
+│   │   ├── api_lint.ignore
+│   │   ├── current.txt
+│   │   ├── res-current.txt
+│   │   └── restricted_current.txt
+│   ├── samples/                       # 示例代码
+│   ├── src/
+│   │   └── androidTest/               # 测试
+│   ├── GEMINI.md                      # Gemini AI 指南
+│   └── build.gradle
+│
+├── integration-tests/                 # 集成测试
+│   ├── benchmark/                     # 基准测试
+│   ├── demos/                         # 演示应用
+│   ├── macrobenchmark/                # 宏基准测试
+│   ├── macrobenchmark-target/         # 基准测试目标
+│   └── player-view-demos/             # PlayerView 演示
+│       └── src/main/res/raw/          # .rc 演示文件 (100+)
+│
+└── Documentation/                     # 文档
+    ├── images/                        # 截图/示意图
+    ├── parts/                         # 组件文档
+    │   ├── animation_spec.md
+    │   ├── box.md
+    │   ├── canvas_layout.md
+    │   ├── column.md
+    │   ├── draw_rect.md
+    │   ├── draw_text.md
+    │   ├── modifier_background.md
+    │   ├── modifier_padding.md
+    │   ├── row.md
+    │   └── ... (50+ 文档)
+    ├── RemoteComposeWireFormat.md.html
+    └── TESTING_GUIDE.md
+```
+
+---
+
+> 本文档基于 `compose/remote` 模块源码全面分析生成，涵盖模块架构、Wire Format 协议、渲染流水线、布局系统、表达式引擎、创建 API 和项目结构等核心内容。

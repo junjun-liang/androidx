@@ -1,1505 +1,1550 @@
-# Compose Remote 模块软件架构与流程文档
+# "帮我制作微件" 入门手册
 
-> 本文档基于对 AndroidX `compose/remote` 模块源码的全面分析，整理 Remote Compose 的软件架构、模块关系、协议规范和开发流程。
+> 基于 Glance + RemoteCompose 构建 Android 自适应微件的完整指南
 
 ---
 
 ## 目录
 
-- [1. 模块概览](#1-模块概览)
-- [2. 总体架构图](#2-总体架构图)
-- [3. 模块分层架构](#3-模块分层架构)
-  - [3.1 remote-core — 运行时核心](#31-remote-core--运行时核心)
-  - [3.2 remote-creation-core — 创建核心](#32-remote-creation-core--创建核心)
-  - [3.3 remote-creation — 创建 API](#33-remote-creation--创建-api)
-  - [3.4 remote-creation-compose — Compose 集成](#34-remote-creation-compose--compose-集成)
-- [4. Wire Format 协议](#4-wire-format-协议)
-  - [4.1 协议架构](#41-协议架构)
-  - [4.2 操作码分类](#42-操作码分类)
-  - [4.3 数据类型编码](#43-数据类型编码)
-- [5. 核心运行机制](#5-核心运行机制)
-  - [5.1 文档加载与解析流程](#51-文档加载与解析流程)
-  - [5.2 渲染流水线](#52-渲染流水线)
-  - [5.3 布局系统](#53-布局系统)
-  - [5.4 表达式引擎](#54-表达式引擎)
-  - [5.5 触摸与交互](#55-触摸与交互)
-- [6. 创建 API 架构](#6-创建-api-架构)
-  - [6.1 三层 API 设计](#61-三层-api-设计)
-  - [6.2 Modifier 系统](#62-modifier-系统)
-  - [6.3 远程状态绑定](#63-远程状态绑定)
-- [7. 数据流与状态管理](#7-数据流与状态管理)
-- [8. 项目目录结构](#8-项目目录结构)
+1. [技术概览](#1-技术概览)
+2. [架构设计](#2-架构设计)
+3. [环境准备](#3-环境准备)
+4. [方式一：Glance API（推荐，自动向后兼容）](#4-方式一glance-api推荐自动向后兼容)
+5. [方式二：RemoteCompose API（API 35+，更丰富交互）](#5-方式二remotecompose-apiapi-35更丰富交互)
+6. [方式三：RemoteComposeWidget 抽象基类](#6-方式三remotecomposewidget-抽象基类)
+7. [组件参考](#7-组件参考)
+8. [Modifier 参考](#8-modifier-参考)
+9. [动画与粒子效果](#9-动画与粒子效果)
+10. [触摸交互](#10-触摸交互)
+11. [状态管理](#11-状态管理)
+12. [测试](#12-测试)
+13. [完整 Demo 代码](#13-完整-demo-代码)
+14. [常见问题](#14-常见问题)
 
 ---
 
-## 1. 模块概览
+## 1. 技术概览
 
-Compose Remote（Remote Compose）是 AndroidX 中一个独特的模块，它提供了一套**跨进程/跨设备的声明式 UI 渲染系统**。其核心思想是：将 UI 描述序列化为紧凑的二进制 wire format，在远程端（如手表、车载系统、IoT 设备）解析并渲染，同时支持双向数据绑定和交互。
+### 1.1 什么是 Glance + RemoteCompose
 
-**核心特征：**
+**Glance** 是 AndroidX 提供的声明式 App Widget 框架，使用 Compose 风格的 API 构建微件。
 
-| 特征 | 说明 |
+**RemoteCompose** 是 Glance 背后的新底层框架，提供：
+- **深度自适应性**：微件可根据尺寸自动调整布局
+- **省电性**：动画和交互逻辑在 Player 端（系统进程）运行，无需持续唤醒应用
+- **丰富交互**：支持 snap scroll、富有表现力的按钮、粒子效果等
+- **内置向后兼容**：新功能在 Android 16+ 开箱即用，旧版本优雅降级
+
+### 1.2 核心优势
+
+| 特性 | 传统 RemoteViews | Glance | Glance + RemoteCompose |
+|------|-----------------|--------|----------------------|
+| API 风格 | XML + Java | Compose-like | Compose-like |
+| 布局能力 | 有限 | 中等 | 丰富（自适应/折叠/流式） |
+| 动画 | 不支持 | 不支持 | ✅ 支持 |
+| 粒子效果 | 不支持 | 不支持 | ✅ 支持 |
+| 触摸交互 | 基础点击 | 基础点击 | 高级（滚动/拖拽/惯性） |
+| 向后兼容 | N/A | ✅ | ✅ 自动降级 |
+| 省电 | ✅ | ✅ | ✅ Player 端运行 |
+
+### 1.3 "帮我制作微件" 功能
+
+RemoteCompose 是"帮我制作微件"功能背后的引擎。用户可以询问 Gemini 构建完全自适应的自定义微件，这些微件可以：
+- 无缝调整大小
+- 针对用户主屏幕或 Wear OS 手表优化
+- 自动适配不同尺寸和方向
+
+---
+
+## 2. 架构设计
+
+### 2.1 整体架构
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     Glance + RemoteCompose 架构                   │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │  开发者 API 层                                             │  │
+│  │  ┌──────────────────┐  ┌───────────────────────────────┐  │  │
+│  │  │  Glance API      │  │  RemoteCompose API             │  │  │
+│  │  │  (GlanceAppWidget)│  │  (@RemoteComposable)          │  │  │
+│  │  └────────┬─────────┘  └───────────┬───────────────────┘  │  │
+│  └───────────┼─────────────────────────┼──────────────────────┘  │
+│              │                         │                         │
+│  ┌───────────┼─────────────────────────┼──────────────────────┐  │
+│  │  翻译层   │                         │                      │  │
+│  │  ┌────────▼─────────┐  ┌───────────▼───────────────────┐  │  │
+│  │  │  Glance →         │  │  captureSingleRemoteDocument  │  │  │
+│  │  │  Emittable 树     │  │  → RemoteComposeNode 树       │  │  │
+│  │  └────────┬─────────┘  └───────────┬───────────────────┘  │  │
+│  │           │                         │                      │  │
+│  │  ┌────────▼─────────────────────────▼──────────────────┐  │  │
+│  │  │  RemoteCompose 文档 (二进制字节码)                    │  │  │
+│  │  │  WireBuffer → 操作码序列 → RPN 表达式                │  │  │
+│  │  └────────┬────────────────────────────────────────────┘  │  │
+│  └───────────┼───────────────────────────────────────────────┘  │
+│              │                                                   │
+│  ┌───────────▼───────────────────────────────────────────────┐  │
+│  │  传输层                                                    │  │
+│  │  RemoteViews.DrawInstructions → IPC → 系统进程            │  │
+│  └───────────┬───────────────────────────────────────────────┘  │
+│              │                                                   │
+│  ┌───────────▼───────────────────────────────────────────────┐  │
+│  │  Player 层 (系统进程)                                      │  │
+│  │  CoreDocument 解码 → 布局计算 → 绘制 → 动画 → 交互       │  │
+│  │  (无需唤醒应用进程)                                        │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 三种开发方式对比
+
+| 方式 | 入口类 | API 风格 | 最低 API | 向后兼容 | 交互能力 |
+|------|--------|---------|---------|---------|---------|
+| **Glance API** | `GlanceAppWidget` | Glance Composable | API 21 | ✅ 自动降级 | 基础（API<35）/ 丰富（API35+） |
+| **RemoteCompose API** | `AppWidgetProvider` | `@RemoteComposable` | API 35 | ❌ | 最丰富 |
+| **RemoteComposeWidget** | `RemoteComposeWidget` | `@Composable` | API 35 | ❌ | 最丰富 |
+
+---
+
+## 3. 环境准备
+
+### 3.1 依赖配置
+
+```kotlin
+// build.gradle.kts (模块级)
+android {
+    compileSdk = 36  // RemoteCompose 需要 API 35+
+    defaultConfig {
+        minSdk = 21   // Glance 支持到 API 21
+        targetSdk = 36
+    }
+}
+
+dependencies {
+    // Glance 核心（必须）
+    implementation("androidx.glance:glance:1.1.0")
+    implementation("androidx.glance:glance-appwidget:1.1.0")
+
+    // Glance Material 主题（可选）
+    implementation("androidx.glance:glance-material3:1.1.0")
+
+    // RemoteCompose（如需直接使用，API 35+）
+    implementation("androidx.compose.remote:remote-core:1.0.0")
+    implementation("androidx.compose.remote:remote-creation:1.0.0")
+    implementation("androidx.compose.remote:remote-creation-core:1.0.0")
+    implementation("androidx.compose.remote:remote-creation-compose:1.0.0")
+
+    // DataStore（状态持久化）
+    implementation("androidx.datastore:datastore-preferences:1.1.0")
+}
+```
+
+### 3.2 AndroidManifest.xml 配置
+
+```xml
+<application>
+    <!-- Widget Receiver -->
+    <receiver
+        android:name=".widget.MyWidgetReceiver"
+        android:enabled="@bool/glance_appwidget_available"
+        android:exported="false"
+        android:label="My Widget">
+        <intent-filter>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+        </intent-filter>
+        <meta-data
+            android:name="android.appwidget.provider"
+            android:resource="@xml/my_widget_info" />
+    </receiver>
+</application>
+```
+
+### 3.3 Widget 信息配置 (res/xml/my_widget_info.xml)
+
+```xml
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="180dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="110dp"
+    android:maxResizeWidth="600dp"
+    android:maxResizeHeight="450dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="3600000"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:widgetCategory="home_screen"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2" />
+```
+
+---
+
+## 4. 方式一：Glance API（推荐，自动向后兼容）
+
+### 4.1 最简 Widget
+
+```kotlin
+class HelloWorldWidget : GlanceAppWidget() {
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        provideContent {
+            Text(text = "Hello, World!")
+        }
+    }
+}
+
+class HelloWorldWidgetReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = HelloWorldWidget()
+}
+```
+
+### 4.2 带状态的 Widget
+
+```kotlin
+class CounterWidget : GlanceAppWidget() {
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val dataStore = context.counterDataStore
+        val initial = dataStore.data.first()
+
+        provideContent {
+            val prefs by dataStore.data.collectAsState(initial)
+            val count = prefs[COUNTER_KEY] ?: 0
+
+            Column(
+                modifier = GlanceModifier.fillMaxSize().background(Color.White).padding(16.dp),
+                verticalAlignment = Alignment.Vertical.CenterVertically,
+                horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
+            ) {
+                Text(text = "Count: $count", style = TextStyle(fontSize = 24.sp))
+                Spacer(modifier = GlanceModifier.height(8.dp))
+                Button(
+                    text = "Increment",
+                    onClick = actionRunCallback<IncrementAction>(),
+                )
+            }
+        }
+    }
+
+    companion object {
+        val COUNTER_KEY = intPreferencesKey("counter")
+    }
+}
+
+class IncrementAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val dataStore = context.counterDataStore
+        dataStore.updateData { prefs ->
+            prefs.toMutablePreferences().apply {
+                val current = this[CounterWidget.COUNTER_KEY] ?: 0
+                this[CounterWidget.COUNTER_KEY] = current + 1
+            }
+        }
+    }
+}
+```
+
+### 4.3 响应式布局 Widget
+
+```kotlin
+class ResponsiveWidget : GlanceAppWidget() {
+    override val sizeMode = SizeMode.Responsive(
+        setOf(DpSize(180.dp, 110.dp), DpSize(250.dp, 180.dp), DpSize(350.dp, 250.dp))
+    )
+
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        provideContent {
+            val size = LocalSize.current
+            when {
+                size.width < 200.dp -> CompactLayout()
+                size.width < 300.dp -> MediumLayout()
+                else -> ExpandedLayout()
+            }
+        }
+    }
+}
+
+@Composable
+fun CompactLayout() {
+    Box(modifier = GlanceModifier.fillMaxSize().padding(8.dp)) {
+        Text("Compact", modifier = GlanceModifier.fillMaxSize())
+    }
+}
+
+@Composable
+fun MediumLayout() {
+    Row(modifier = GlanceModifier.fillMaxSize().padding(12.dp)) {
+        Text("Medium", modifier = GlanceModifier.defaultWeight())
+    }
+}
+
+@Composable
+fun ExpandedLayout() {
+    Column(modifier = GlanceModifier.fillMaxSize().padding(16.dp)) {
+        Text("Expanded", modifier = GlanceModifier.fillMaxWidth())
+        Spacer(modifier = GlanceModifier.height(8.dp))
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            Text("Left", modifier = GlanceModifier.defaultWeight())
+            Text("Right", modifier = GlanceModifier.defaultWeight())
+        }
+    }
+}
+```
+
+### 4.4 可滚动列表 Widget（自动使用 RemoteCompose）
+
+当使用 `VerticalScrollMode.Normal` 时，Glance 在 API 35+ 上自动使用 RemoteCompose 后端：
+
+```kotlin
+class ScrollableWidget : GlanceAppWidget() {
+    override val sizeMode = SizeMode.Exact
+
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        provideContent {
+            LazyColumn(
+                modifier = GlanceModifier.fillMaxSize().background(Color.White),
+                verticalScrollMode = VerticalScrollMode.Normal,
+            ) {
+                items(20) { index ->
+                    Row(
+                        modifier = GlanceModifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.Vertical.CenterVertically,
+                    ) {
+                        Text("Item $index", modifier = GlanceModifier.defaultWeight())
+                        Button("Action", onClick = actionRunCallback<ItemAction>())
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+### 4.5 M3 风格 Widget
+
+```kotlin
+class M3StyleWidget : GlanceAppWidget() {
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        provideContent {
+            val colors = GlanceTheme.colors
+            Scaffold(
+                titleBar = TitleBar("My App"),
+                backgroundColor = colors.surface,
+            ) {
+                Column(modifier = GlanceModifier.padding(16.dp)) {
+                    Text(
+                        "Hello M3",
+                        style = TextStyle(color = colors.onSurface, fontSize = 20.sp),
+                    )
+                    Spacer(modifier = GlanceModifier.height(12.dp))
+                    FilledButton("Primary Action", onClick = actionRunCallback<PrimaryAction>())
+                    Spacer(modifier = GlanceModifier.height(8.dp))
+                    OutlineButton("Secondary", onClick = actionRunCallback<SecondaryAction>())
+                }
+            }
+        }
+    }
+}
+```
+
+---
+
+## 5. 方式二：RemoteCompose API（API 35+，更丰富交互）
+
+### 5.1 基础 RemoteCompose Widget
+
+```kotlin
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+class MyRCWidget : AppWidgetProvider() {
+    override fun onUpdate(context: Context, wm: AppWidgetManager, widgetIds: IntArray) {
+        widgetIds.forEach { widgetId ->
+            goAsync {
+                val bytes = recordWidget(context)
+                val drawInstructions = RemoteViews.DrawInstructions.Builder(listOf(bytes)).build()
+                val remoteViews = RemoteViews(drawInstructions)
+                wm.updateAppWidget(widgetId, remoteViews)
+            }
+        }
+    }
+
+    private suspend fun recordWidget(context: Context): ByteArray {
+        return captureSingleRemoteDocument(
+            context = context.applicationContext,
+            profile = RcPlatformProfiles.WIDGETS_V7,
+        ) {
+            MyWidgetContent()
+        }.bytes
+    }
+}
+
+@Composable
+@RemoteComposable
+fun MyWidgetContent() {
+    RemoteColumn(modifier = RemoteModifier.fillMaxSize().background(RemoteColor(Color.White))) {
+        RemoteText("Hello RemoteCompose!", color = Color.Black.rc)
+        RemoteBox(
+            modifier = RemoteModifier
+                .size(width = 200.rdp, height = 100.rdp)
+                .background(RemoteColor(Color.Blue))
+                .padding(RemoteDp(16.dp)),
+            contentAlignment = RemoteAlignment.Center,
+        ) {
+            RemoteText("Tap me!", color = Color.White.rc)
+        }
+    }
+}
+```
+
+### 5.2 带点击交互的 RemoteCompose Widget
+
+```kotlin
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+class InteractiveRCWidget : AppWidgetProvider() {
+    override fun onUpdate(context: Context, wm: AppWidgetManager, widgetIds: IntArray) {
+        widgetIds.forEach { widgetId ->
+            goAsync {
+                val bytes = recordWidget(context)
+                val drawInstructions = RemoteViews.DrawInstructions.Builder(listOf(bytes)).build()
+                val remoteViews = RemoteViews(drawInstructions)
+                wm.updateAppWidget(widgetId, remoteViews)
+            }
+        }
+    }
+
+    private suspend fun recordWidget(context: Context): ByteArray {
+        return captureSingleRemoteDocument(
+            context = context.applicationContext,
+            profile = RcPlatformProfiles.WIDGETS_V7,
+        ) {
+            InteractiveContent()
+        }.bytes
+    }
+}
+
+@Composable
+@RemoteComposable
+fun InteractiveContent() {
+    val clickCount = rememberMutableRemoteInt(0)
+    val onClickAction = ValueChange(clickCount, clickCount + 1)
+
+    RemoteColumn(modifier = RemoteModifier.fillMaxSize().padding(RemoteDp(16.dp))) {
+        RemoteText(
+            text = "Clicks: ".rs + clickCount.toRemoteString(),
+            color = Color.Black.rc,
+        )
+        RemoteBox(
+            modifier = RemoteModifier
+                .size(width = 200.rdp, height = 80.rdp)
+                .background(RemoteColor(Color.LightGray))
+                .clickable(onClickAction)
+                .padding(RemoteDp(12.dp)),
+            contentAlignment = RemoteAlignment.Center,
+        ) {
+            RemoteText("Tap me!", color = Color.Black.rc)
+        }
+    }
+}
+```
+
+---
+
+## 6. 方式三：RemoteComposeWidget 抽象基类
+
+### 6.1 基础用法
+
+```kotlin
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+class MyRemoteWidget : RemoteComposeWidget(useCompose = true) {
+
+    @Composable
+    override fun Content(context: Context, widgetId: Int) {
+        RemoteColumn(modifier = RemoteModifier.fillMaxSize().background(RemoteColor(Color.White))) {
+            RemoteText("Widget ID: $widgetId", color = Color.Black.rc)
+            RemoteBox(
+                modifier = RemoteModifier
+                    .fillMaxWidth()
+                    .height(60.rdp)
+                    .background(RemoteColor(Color.Blue))
+                    .onClick { /* 处理点击 */ }
+                    .padding(RemoteDp(16.dp)),
+                contentAlignment = RemoteAlignment.Center,
+            ) {
+                RemoteText("Click me!", color = Color.White.rc)
+            }
+        }
+    }
+}
+```
+
+### 6.2 过程式模式
+
+```kotlin
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+class ProceduralWidget : RemoteComposeWidget(useCompose = false) {
+
+    override fun ProceduralContent(context: Context, widgetId: Int): RemoteComposeContext? {
+        return RemoteComposeContextAndroid(
+            creationDisplayInfo = createCreationDisplayInfo(context),
+            contentDescription = "Procedural Widget",
+            profile = RcPlatformProfiles.WIDGETS_V7,
+        ) {
+            column(RemoteModifier.fillMaxSize().background(Color.White)) {
+                text("Widget ID: $widgetId", textStyle = TextStyle(color = Color.Black))
+                box(
+                    modifier = RemoteModifier.fillMaxWidth().height(60f)
+                        .background(Color.Blue).padding(16f),
+                    horizontalAlign = BoxLayout.CENTER,
+                    verticalAlign = BoxLayout.CENTER,
+                ) {
+                    text("Click me!", textStyle = TextStyle(color = Color.White))
+                }
+            }
+        }
+    }
+}
+```
+
+---
+
+## 7. 组件参考
+
+### 7.1 Glance 组件
+
+| 组件 | 说明 | 示例 |
+|------|------|------|
+| `Text` | 文本 | `Text("Hello", style = TextStyle(fontSize = 16.sp))` |
+| `Button` | 按钮 | `Button("Click", onClick = actionRunCallback<MyAction>())` |
+| `Image` | 图片 | `Image(provider = ImageProvider(R.drawable.icon), contentDescription = "icon")` |
+| `Box` | 叠加布局 | `Box(modifier = GlanceModifier.fillMaxSize()) { ... }` |
+| `Row` | 水平布局 | `Row { Text("A"); Text("B") }` |
+| `Column` | 垂直布局 | `Column { Text("A"); Text("B") }` |
+| `Spacer` | 间隔 | `Spacer(modifier = GlanceModifier.height(8.dp))` |
+| `LazyColumn` | 滚动列表 | `LazyColumn(verticalScrollMode = VerticalScrollMode.Normal) { items(10) { ... } }` |
+| `CheckBox` | 复选框 | `CheckBox(checked = true, onCheckedChange = actionRunCallback<...>())` |
+| `Switch` | 开关 | `Switch(checked = false, onCheckedChange = actionRunCallback<...>())` |
+| `RadioButton` | 单选按钮 | `RadioButton(selected = true, onClick = actionRunCallback<...>())` |
+| `LinearProgressIndicator` | 线性进度条 | `LinearProgressIndicator(progress = 0.5f)` |
+| `FilledButton` | M3 填充按钮 | `FilledButton("Action", onClick = ...)` |
+| `OutlineButton` | M3 描边按钮 | `OutlineButton("Action", onClick = ...)` |
+| `Scaffold` | 脚手架 | `Scaffold(titleBar = TitleBar("App")) { ... }` |
+
+### 7.2 RemoteCompose 组件
+
+| 组件 | 说明 | 示例 |
+|------|------|------|
+| `RemoteText` | 文本 | `RemoteText("Hello", color = Color.Black.rc)` |
+| `RemoteBox` | 叠加布局 | `RemoteBox(modifier = RemoteModifier.fillMaxSize()) { ... }` |
+| `RemoteColumn` | 垂直布局 | `RemoteColumn { RemoteText("A"); RemoteText("B") }` |
+| `RemoteRow` | 水平布局 | `RemoteRow { RemoteText("A"); RemoteText("B") }` |
+| `RemoteImage` | 图片 | `RemoteImage(bitmap, contentDescription = "img")` |
+| `RemoteCanvas` | 绘图画布 | `RemoteCanvas(modifier = RemoteModifier.size(100.rdp)) { ... }` |
+| `RemoteSpacer` | 间隔 | `RemoteSpacer(modifier = RemoteModifier.height(8.rdp))` |
+| `FitBox` | 适配 Box | `FitBox { RemoteImage(bitmap) }` |
+| `RemoteCollapsibleColumn` | 可折叠列 | `RemoteCollapsibleColumn(priority = 1) { ... }` |
+| `RemoteCollapsibleRow` | 可折叠行 | `RemoteCollapsibleRow(priority = 1) { ... }` |
+| `StateLayout` | 状态切换 | `StateLayout(state = currentState, states = intArrayOf(0, 1, 2)) { ... }` |
+
+---
+
+## 8. Modifier 参考
+
+### 8.1 GlanceModifier
+
+| Modifier | 说明 |
+|----------|------|
+| `.fillMaxSize()` | 填满父容器 |
+| `.fillMaxWidth()` | 填满宽度 |
+| `.fillMaxHeight()` | 填满高度 |
+| `.width(100.dp)` | 固定宽度 |
+| `.height(50.dp)` | 固定高度 |
+| `.padding(16.dp)` | 内边距 |
+| `.background(Color.White)` | 背景色 |
+| `.clickable("key") { ... }` | 点击事件 |
+| `.cornerRadius(12.dp)` | 圆角（API 31+） |
+| `.visibility(Visibility.Visible)` | 可见性 |
+| `.defaultWeight()` | 权重（Row/Column） |
+
+### 8.2 RemoteModifier
+
+| Modifier | 说明 |
+|----------|------|
+| `.fillMaxSize()` | 填满父容器 |
+| `.size(100.rdp)` | 固定尺寸 |
+| `.padding(RemoteDp(16.dp))` | 内边距 |
+| `.background(RemoteColor(Color.Red))` | 背景色 |
+| `.clip(RoundedCornerShape(12.dp))` | 裁剪形状 |
+| `.clickable(action)` | 点击事件 |
+| `.onClick { ... }` | 点击回调（Widget 专用） |
+| `.visibility(intState)` | 条件可见性 |
+| `.scale(2f.rf)` | 缩放 |
+| `.alpha(0.5f.rf)` | 透明度 |
+| `.rotate(45f.rf)` | 旋转 |
+| `.offset(x = 10.rdp)` | 偏移 |
+| `.graphicsLayer { ... }` | 图形变换 |
+| `.verticalScroll(scrollState)` | 垂直滚动 |
+| `.horizontalScroll(scrollState)` | 水平滚动 |
+| `.weight(1f)` | 权重 |
+| `.border(2.rdp, RemoteColor(Color.Black))` | 边框 |
+| `.marquee()` | 跑马灯效果 |
+
+---
+
+## 9. 动画与粒子效果
+
+### 9.1 内置动画变量
+
+RemoteCompose Player 端提供以下时间变量，无需应用进程参与：
+
+| 变量 | 说明 |
 |------|------|
-| 架构模式 | 服务端生成 UI 描述 → 网络传输 → 客户端渲染 |
-| 协议格式 | 自定义二进制 wire format（紧凑、可版本化） |
-| 布局系统 | 类 Compose 的声明式布局（Column/Row/Box/Canvas 等） |
-| 状态管理 | 远程状态绑定（RemoteFloat/RemoteInt/RemoteColor 等） |
-| 交互支持 | 触摸、点击、滚动、动画、粒子系统 |
-| 目标平台 | Wear OS、Android Auto、Widget、轻量设备 |
+| `ANIMATION_TIME` | 动画时间（秒） |
+| `CONTINUOUS_SEC` | 从午夜开始的秒数 |
+| `TIME_IN_SEC/MIN/HR` | 量化时间 |
+| `CALENDAR_MONTH` | 月份 1-12 |
+| `WEEK_DAY` | 星期 1-7 |
+| `DAY_OF_MONTH` | 日期 1-31 |
+| `ANIMATION_DELTA_TIME` | 帧间时间差 |
 
----
+### 9.2 动画示例
 
-## 2. 总体架构图
+```kotlin
+@Composable
+@RemoteComposable
+fun AnimatedPulseContent() {
+    val animTime = rememberAnimatedFloat()
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Compose Remote 总体架构                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                    服务端 (Server Side)                          │   │
-│  │  ┌──────────────────────────────────────────────────────────┐  │   │
-│  │  │              创建层 (Creation Layer)                      │  │   │
-│  │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │  │   │
-│  │  │  │  Java API   │  │ Kotlin DSL  │  │ Compose UI      │  │  │   │
-│  │  │  │ (Procedural)│  │ (Declarative)│  │ (Composable)    │  │  │   │
-│  │  │  │             │  │             │  │                 │  │  │   │
-│  │  │  │ RemoteCompose│  │ RcScope     │  │ RemoteCanvas    │  │  │   │
-│  │  │  │ Writer      │  │ Column/Row  │  │ drawRect/       │  │  │   │
-│  │  │  │ drawRect()  │  │ Box/Canvas  │  │ drawCircle()    │  │  │   │
-│  │  │  └──────┬──────┘  └──────┬──────┘  └────────┬────────┘  │  │   │
-│  │  │         │                │                   │           │  │   │
-│  │  │         └────────────────┴───────────────────┘           │  │   │
-│  │  │                          │                               │  │   │
-│  │  │         ┌────────────────▼───────────────────┐           │  │   │
-│  │  │         │      RemoteComposeBuffer            │           │  │   │
-│  │  │         │      (Wire Format 编码)             │           │  │   │
-│  │  │         └────────────────┬───────────────────┘           │  │   │
-│  │  └──────────────────────────┼───────────────────────────────┘  │   │
-│  └─────────────────────────────┼───────────────────────────────────┘   │
-│                                │                                        │
-│                           ┌────┴────┐                                   │
-│                           │ Network │  (Bluetooth/WiFi/ADB/...)         │
-│                           └────┬────┘                                   │
-│                                │                                        │
-│  ┌─────────────────────────────▼───────────────────────────────────┐   │
-│  │                    客户端 (Client Side)                          │   │
-│  │  ┌──────────────────────────────────────────────────────────┐  │   │
-│  │  │              运行时层 (Runtime Layer)                     │  │   │
-│  │  │                                                          │  │   │
-│  │  │  ┌──────────────┐    ┌──────────────┐    ┌───────────┐ │  │   │
-│  │  │  │ WireBuffer   │───▶│ Operations   │───▶│ Remote    │ │  │   │
-│  │  │  │ (解码)       │    │ (分发)       │    │ Context   │ │  │   │
-│  │  │  └──────────────┘    └──────────────┘    └─────┬─────┘ │  │   │
-│  │  │                                                │      │  │   │
-│  │  │  ┌──────────────┐    ┌──────────────┐    ┌─────▼─────┐ │  │   │
-│  │  │  │ CoreDocument │◀───│ LayoutManager│◀───│ Paint     │ │  │   │
-│  │  │  │ (状态/元数据)│    │ (布局计算)   │    │ Context   │ │  │   │
-│  │  │  └──────────────┘    └──────────────┘    └───────────┘ │  │   │
-│  │  │                                                          │  │   │
-│  │  │  ┌────────────────────────────────────────────────────┐ │  │   │
-│  │  │  │ 渲染输出 (Canvas/Android Canvas/Skia/...)         │ │  │   │
-│  │  │  └────────────────────────────────────────────────────┘ │  │   │
-│  │  └──────────────────────────────────────────────────────────┘  │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+    RemoteBox(
+        modifier = RemoteModifier
+            .fillMaxSize()
+            .background(RemoteColor(Color.White)),
+        contentAlignment = RemoteAlignment.Center,
+    ) {
+        RemoteBox(
+            modifier = RemoteModifier
+                .size(100.rdp)
+                .scale(1.0f.rf + 0.2f.rf * sin(animTime * 2.0f.rf))
+                .alpha(0.8f.rf + 0.2f.rf * cos(animTime * 3.0f.rf))
+                .background(RemoteColor(Color.Blue)),
+        )
+    }
+}
 ```
 
----
+### 9.3 粒子效果
 
-## 3. 模块分层架构
+```kotlin
+@Composable
+@RemoteComposable
+fun ParticleRainContent() {
+    RemoteCanvas(modifier = RemoteModifier.fillMaxSize()) {
+        val cx = rememberMutableRemoteFloat(0f)
+        val cy = rememberMutableRemoteFloat(0f)
+        val dx = rememberMutableRemoteFloat(0f)
+        val dy = rememberMutableRemoteFloat(0f)
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Compose Remote 模块分层                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  Layer 4: Compose 集成层                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  remote-creation-compose                                        │   │
-│  │  ├── RemoteCanvas.kt     (Compose Canvas 集成)                  │   │
-│  │  ├── RemoteComposeState.kt (状态管理)                           │   │
-│  │  ├── Modifier 扩展       (Compose Modifier → Remote Modifier)   │   │
-│  │  └── 布局组件            (RemoteColumn/RemoteRow 等)            │   │
-│  │                                                                 │   │
-│  │  依赖: remote-creation, Compose Runtime/UI                      │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                    │                                    │
-│  Layer 3: 创建 API 层                                                │
-│  ┌─────────────────────────────────▼─────────────────────────────────┐   │
-│  │  remote-creation                                                  │   │
-│  │  ├── Kotlin DSL API        (RcScope, Column/Row/Box)             │   │
-│  │  ├── RemoteComposeContext  (DSL 入口)                            │   │
-│  │  ├── RemoteComposeWriter   (Java 过程式 API)                     │   │
-│  │  ├── RecordingModifier     (Modifier 记录与序列化)               │   │
-│  │  ├── RemoteModifier        (远程状态绑定 Modifier)               │   │
-│  │  ├── RcPaint/RcShader      (画笔/着色器)                         │   │
-│  │  └── RcTypes               (RcFloat/RcInt/RcColor 等)            │   │
-│  │                                                                 │   │
-│  │  依赖: remote-creation-core                                      │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                    │                                    │
-│  Layer 2: 创建核心层                                                 │
-│  ┌─────────────────────────────────▼─────────────────────────────────┐   │
-│  │  remote-creation-core                                             │   │
-│  │  ├── RemoteComposeBuffer   (Wire Format 编码器)                  │   │
-│  │  ├── Operation 定义        (各操作码的编码逻辑)                  │   │
-│  │  ├── CompanionOperation    (操作伴生对象)                        │   │
-│  │  └── 基础数据结构          (IntMap, DataMap 等)                  │   │
-│  │                                                                 │   │
-│  │  依赖: remote-core                                               │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                    │                                    │
-│  Layer 1: 运行时核心层                                               │
-│  ┌─────────────────────────────────▼─────────────────────────────────┐   │
-│  │  remote-core                                                      │   │
-│  │  ├── CoreDocument.java     (文档元数据/版本/能力)                │   │
-│  │  ├── RemoteContext.java    (运行时上下文/状态管理)               │   │
-│  │  ├── WireBuffer.java       (二进制缓冲区读写)                    │   │
-│  │  ├── Operations.java       (操作码注册表/版本管理)               │   │
-│  │  ├── Operation.java        (操作接口)                            │   │
-│  │  ├── PaintContext.java     (绘制上下文)                          │   │
-│  │  ├── RemoteClock.java      (时钟抽象)                            │   │
-│  │  ├── LayoutCompute.java    (布局计算)                            │   │
-│  │  ├── SystemInfo.java       (系统信息)                            │   │
-│  │  ├── TimeVariables.java    (时间变量)                            │   │
-│  │  ├── TouchListener.java    (触摸监听)                            │   │
-│  │  └── operations/           (100+ 操作实现)                       │   │
-│  │      ├── layout/           (布局操作)                            │   │
-│  │      ├── modifiers/        (Modifier 操作)                       │   │
-│  │      ├── matrix/           (矩阵操作)                            │   │
-│  │      ├── utilities/        (工具类)                              │   │
-│  │      └── loom/             (模板/宏系统)                         │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+        val variables = arrayOf(cx, cy, dx, dy)
+        val psId = createParticles(
+            variables = variables,
+            initial = arrayOf(
+                rand() * width,
+                0f.rf,
+                (rand() - 0.5f.rf) * 2f.rf,
+                rand() * 3f.rf + 1f.rf,
+            ),
+            particleCount = 100,
+        )
 
-### 3.1 remote-core — 运行时核心
-
-remote-core 是 Remote Compose 的**运行时引擎**，负责 wire format 的解析、操作分发、状态管理和渲染协调。
-
-#### 核心类关系
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    remote-core 核心类关系                               │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌──────────────────┐                                                   │
-│  │   CoreDocument   │◀── 文档元数据 (版本/宽高/能力/属性)              │
-│  │   ─────────────  │◀── 根内容行为 (滚动/对齐/缩放模式)               │
-│  └────────┬─────────┘                                                   │
-│           │                                                             │
-│  ┌────────▼─────────┐     ┌──────────────────┐                         │
-│  │  RemoteContext   │◀────│  RemoteClock     │                         │
-│  │  ──────────────  │     │  (系统/自定义)   │                         │
-│  │  • 状态管理       │     └──────────────────┘                         │
-│  │  • 数据加载       │     ┌──────────────────┐                         │
-│  │  • 操作回调       │◀────│  PaintContext    │                         │
-│  │  • 变量监听       │     │  (绘制抽象)      │                         │
-│  │  • 触摸处理       │     └──────────────────┘                         │
-│  │  • 动画时间       │                                                   │
-│  └────────┬─────────┘                                                   │
-│           │                                                             │
-│  ┌────────▼─────────┐                                                   │
-│  │   WireBuffer     │◀── 二进制缓冲区 (byte[] + 读写指针)              │
-│  │   ────────────   │◀── 支持: byte/short/int/long/float/double/UTF8   │
-│  └────────┬─────────┘                                                   │
-│           │                                                             │
-│  ┌────────▼─────────┐                                                   │
-│  │   Operations     │◀── 操作码注册表 (V6/V7 + Profile 系统)           │
-│  │   ────────────   │◀── 100+ 操作码映射到 CompanionOperation          │
-│  └──────────────────┘                                                   │
-│                                                                         │
-│  内置变量 ID (RemoteContext 定义):                                      │
-│  ├── ID_CONTINUOUS_SEC (1)   → 每小时循环的秒数 (0-3600)               │
-│  ├── ID_TIME_IN_SEC (2)      → 午夜开始的秒数                         │
-│  ├── ID_TIME_IN_MIN (3)      → 午夜开始的分钟数                       │
-│  ├── ID_TIME_IN_HR (4)       → 午夜开始的小时数                       │
-│  ├── ID_WINDOW_WIDTH (5)     → 窗口宽度                               │
-│  ├── ID_WINDOW_HEIGHT (6)    → 窗口高度                               │
-│  ├── ID_TOUCH_POS_X (13)     → 触摸 X 坐标                            │
-│  ├── ID_TOUCH_POS_Y (14)     → 触摸 Y 坐标                            │
-│  ├── ID_ACCELERATION_X/Y/Z   → 加速度计                               │
-│  ├── ID_GYRO_ROT_X/Y/Z       → 陀螺仪                                 │
-│  ├── ID_MAGNETIC_X/Y/Z       → 磁力计                                 │
-│  └── ID_LIGHT (26)           → 环境光 (lux)                           │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-#### 操作码版本与 Profile 系统
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│              Operations 版本与 Profile 管理                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  版本层级:                                                              │
-│  ├── V6: 基础操作集 (向后兼容)                                         │
-│  └── V7+: Profile 扩展系统                                             │
-│                                                                         │
-│  Profile 掩码 (RcProfiles):                                             │
-│  ├── PROFILE_ANDROIDX      (0x01) → AndroidX 标准功能                │
-│  ├── PROFILE_WIDGETS       (0x02) → Widget 专用功能                  │
-│  ├── PROFILE_ANDROID_NATIVE (0x04) → Android 原生功能 (外部定义)     │
-│  ├── PROFILE_EXPERIMENTAL  (0x08) → 实验性功能                       │
-│  └── PROFILE_DEPRECATED    (0x10) → 已废弃功能                       │
-│                                                                         │
-│  Profile 组合规则:                                                      │
-│  ├── 多个 Profile 同时指定时取**交集** (确保文档在所有 Profile 工作)  │
-│  └── 例: ANDROIDX + WIDGETS → 仅支持两者共有的操作                   │
-│                                                                         │
-│  操作码分类 (按功能域):                                                 │
-│  ├── 0-9:   协议操作 (HEADER, LOAD_BITMAP, THEME, CLICK_AREA...)     │
-│  ├── 14:    ANIMATION_SPEC                                             │
-│  ├── 16-67: Modifier 操作 (WIDTH, HEIGHT, PADDING, BACKGROUND...)    │
-│  ├── 38-57: 绘制操作 (CLIP, PAINT, DRAW_RECT, DRAW_CIRCLE...)        │
-│  ├── 80-89: 数据操作 (DATA_FLOAT, ANIMATED_FLOAT, DATA_INT...)       │
-│  ├── 100-149: 高级数据 (DATA_BITMAP, DATA_TEXT, TEXT_LOOKUP...)      │
-│  ├── 150-199: 表达式与特效 (TEXT_MEASURE, TOUCH_EXPRESSION...)       │
-│  ├── 200-243: 布局操作 (LAYOUT_ROOT, LAYOUT_BOX, LAYOUT_ROW...)      │
-│  └── 250:   ACCESSIBILITY_SEMANTICS                                    │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 3.2 remote-creation-core — 创建核心
-
-创建核心层负责将高级 API 调用转换为 wire format 二进制指令。
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│              remote-creation-core 架构                                   │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  RemoteComposeBuffer                                             │   │
-│  │  ─────────────────                                               │   │
-│  │  核心方法:                                                       │   │
-│  │  ├── addHeader(version, width, height, capabilities)            │   │
-│  │  ├── addDrawRect(left, top, right, bottom)                      │   │
-│  │  ├── addDrawCircle(centerX, centerY, radius)                    │   │
-│  │  ├── addDrawText(textId, x, y)                                  │   │
-│  │  ├── addBitmapData(imageId, encoding, width, height, data)      │   │
-│  │  ├── addFloatConstant(id, value)                                │   │
-│  │  ├── addTheme(themeId, colors...)                               │   │
-│  │  ├── addComponentStart(id, modifier...)                         │   │
-│  │  ├── addContainerEnd()                                          │   │
-│  │  └── ... (100+ 操作方法)                                        │   │
-│  │                                                                 │   │
-│  │  内部使用 WireBuffer 进行二进制编码                              │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  CompanionOperation 接口                                         │   │
-│  │  ─────────────────────                                           │   │
-│  │  interface CompanionOperation {                                  │   │
-│  │      void read(WireBuffer buffer, RemoteContext context);        │   │
-│  │  }                                                               │   │
-│  │                                                                 │   │
-│  │  每个操作类实现此接口:                                           │   │
-│  │  ├── DrawRect::read(buffer, context) → 解码并执行绘制矩形       │   │
-│  │  ├── Theme::read(buffer, context) → 解码并设置主题              │   │
-│  │  └── ComponentStart::read(buffer, context) → 解码并启动组件   │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 3.3 remote-creation — 创建 API
-
-提供三种不同层次的 API 供开发者创建 Remote Compose 文档。
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│              remote-creation 三层 API 架构                               │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  Layer 3: Compose UI 集成 (remote-creation-compose)                    │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  @Composable                                                      │   │
-│  │  fun MyRemoteUI() {                                               │   │
-│  │      RemoteCanvas {                                               │   │
-│  │          val paint = rememberRemotePaint()                        │   │
-│  │          drawRect(0f, 0f, 100f, 100f, paint)                      │   │
-│  │          drawCircle(50f, 50f, 25f)                                │   │
-│  │      }                                                            │   │
-│  │  }                                                                │   │
-│  │                                                                   │   │
-│  │  特点: 在标准 Compose UI 中使用 Remote Compose 绘制              │   │
-│  │  适用: 需要与 Compose UI 混合使用的场景                          │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  Layer 2: Kotlin DSL (remote-creation)                                 │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  remoteComposeDocument {                                          │   │
-│  │      Column(                                                      │   │
-│  │          modifier = Modifier.padding(16f).background(0xFF0000),   │   │
-│  │          horizontal = RcHorizontalPositioning.Center              │   │
-│  │      ) {                                                          │   │
-│  │          Text("Hello Remote", fontSize = 24f)                     │   │
-│  │          Box(modifier = Modifier.size(50f, 50f)) { }              │   │
-│  │      }                                                            │   │
-│  │  }                                                                │   │
-│  │                                                                   │   │
-│  │  特点: 声明式语法，类似 Compose DSL                               │   │
-│  │  适用: 服务端生成远程 UI 的主要方式                               │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  Layer 1: Java 过程式 API (remote-creation)                            │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  RemoteComposeWriter writer = new RemoteComposeWriter();          │   │
-│  │  writer.addHeader(1, 0, 0, 400, 400, 0, null);                    │   │
-│  │  writer.addDrawRect(0f, 0f, 100f, 100f);                          │   │
-│  │  writer.addDrawCircle(50f, 50f, 25f);                             │   │
-│  │  writer.addDrawText(textId, 10f, 10f);                            │   │
-│  │  byte[] document = writer.getBytes();                             │   │
-│  │                                                                   │   │
-│  │  特点: 最直接控制，无抽象开销                                     │   │
-│  │  适用: 性能敏感、需要精细控制的场景                               │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 3.4 remote-creation-compose — Compose 集成
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│              remote-creation-compose 架构                                │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  核心组件:                                                              │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  RemoteCanvas                                                     │   │
-│  │  ───────────                                                      │   │
-│  │  • 在 Compose UI 中嵌入 Remote Compose 绘制区域                   │   │
-│  │  • 支持远程状态绑定 (RemoteFloat/RemoteInt/RemoteColor)          │   │
-│  │  • 提供 drawRect/drawCircle/drawText/drawPath 等绘制 API         │   │
-│  │  • 通过 usePaint() 绑定 RcPaint                                   │   │
-│  │                                                                   │   │
-│  │  RemoteComposeState                                               │   │
-│  │  ─────────────────                                                │   │
-│  │  • 管理远程文档状态                                               │   │
-│  │  • 支持变量覆盖 (setNamedColorOverride/setNamedFloatOverride)    │   │
-│  │  • 支持集合数据 (addCollection/putDataMap)                       │   │
-│  │                                                                   │   │
-│  │  Modifier 桥接                                                    │   │
-│  │  ─────────────                                                    │   │
-│  │  • Compose Modifier → RecordingModifier 转换                     │   │
-│  │  • 支持 padding/background/border/offset/scroll 等              │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  远程类型系统:                                                          │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │  RcFloat    │  │  RcInteger  │  │  RcColor    │  │  RcString   │  │
-│  │  ────────   │  │  ─────────  │  │  ────────   │  │  ─────────  │  │
-│  │  远程浮点   │  │  远程整数   │  │  远程颜色   │  │  远程字符串 │  │
-│  │  支持表达式 │  │  支持表达式 │  │  支持主题   │  │  支持查找   │  │
-│  │  支持动画   │  │  支持条件   │  │  支持覆盖   │  │  支持合并   │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+        particlesLoop(
+            id = psId,
+            restartCondition = cy gt height,
+            updateEquations = arrayOf(
+                cx + dx * dt,
+                cy + dy * dt,
+                dx,
+                dy + 9.8f.rf * dt,
+            ),
+        ) {
+            drawCircle(px = cx.toFloat(), py = cy.toFloat(), radius = 3f, paint = bluePaint)
+        }
+    }
+}
 ```
 
 ---
 
-## 4. Wire Format 协议
+## 10. 触摸交互
 
-### 4.1 协议架构
+### 10.1 滚动
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Wire Format 协议架构                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  文档结构:                                                              │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  [Header] → [Data Section] → [Draw Section] → [Layout Section] │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  Header (操作码 0):                                                     │
-│  ┌─────────┬─────────┬─────────┬─────────┬─────────┬─────────────┐   │
-│  │ Major   │ Minor   │ Patch   │ Width   │ Height  │ Capabilities│   │
-│  │ (1 byte)│ (1 byte)│ (1 byte)│ (4 bytes│ (4 bytes│ (8 bytes)   │   │
-│  └─────────┴─────────┴─────────┴─────────┴─────────┴─────────────┘   │
-│                                                                         │
-│  操作通用格式:                                                          │
-│  ┌─────────┬──────────────────────────────────────────────────────┐   │
-│  │ OpCode  │ Parameters (变长，取决于操作类型)                    │   │
-│  │ (1 byte)│                                                      │   │
-│  └─────────┴──────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  数据编码:                                                              │
-│  ├── byte:    1 byte                                                   │
-│  ├── short:   2 bytes (big-endian)                                     │
-│  ├── int:     4 bytes (big-endian)                                     │
-│  ├── long:    8 bytes (big-endian)                                     │
-│  ├── float:   4 bytes (IEEE 754, big-endian)                           │
-│  ├── double:  8 bytes (IEEE 754, big-endian)                           │
-│  ├── buffer:  4 bytes length + N bytes data                            │
-│  └── UTF8:    4 bytes length + N bytes UTF-8 data                      │
-│                                                                         │
-│  ID 编码优化 (NaN 技巧):                                                │
-│  ├── 浮点值使用 IEEE 754 NaN 的 payload 区域编码变量 ID               │
-│  ├── 0x7FC00000 | (id & 0x003FFFFF) → 编码为 "NaN float"             │
-│  └── 运行时通过 Float.isNaN() 检测，提取 ID 查询实际值               │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```kotlin
+@Composable
+@RemoteComposable
+fun ScrollableContent() {
+    val scrollState = rememberScrollState()
+
+    RemoteColumn(modifier = RemoteModifier.fillMaxSize().verticalScroll(scrollState)) {
+        repeat(50) { index ->
+            RemoteRow(modifier = RemoteModifier.fillMaxWidth().height(48.rdp).padding(RemoteDp(8.dp))) {
+                RemoteText("Item $index", color = Color.Black.rc)
+            }
+        }
+    }
+}
 ```
 
-### 4.2 操作码分类
+### 10.2 触摸拖拽
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    操作码分类总览                                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  协议/元数据 (0-9, 63-65, 103, 250):                                   │
-│  ├── 0   HEADER              文档头信息                                │
-│  ├── 4   LOAD_BITMAP         加载位图数据                              │
-│  ├── 63  THEME               设置主题                                  │
-│  ├── 64  CLICK_AREA          定义点击区域                              │
-│  ├── 65  ROOT_CONTENT_BEHAVIOR  根内容行为                             │
-│  └── 250 ACCESSIBILITY_SEMANTICS  无障碍语义                           │
-│                                                                         │
-│  绘制操作 (38-57, 124-125, 133, 139, 149, 152, 184, 190):              │
-│  ├── 38  CLIP_PATH           裁剪路径                                  │
-│  ├── 39  CLIP_RECT           裁剪矩形                                  │
-│  ├── 40  PAINT_VALUES        画笔属性                                  │
-│  ├── 42  DRAW_RECT           绘制矩形                                  │
-│  ├── 43  DRAW_TEXT_RUN       绘制文本                                  │
-│  ├── 44  DRAW_BITMAP         绘制位图                                  │
-│  ├── 46  DRAW_CIRCLE         绘制圆形                                  │
-│  ├── 47  DRAW_LINE           绘制线条                                  │
-│  ├── 51  DRAW_ROUND_RECT     绘制圆角矩形                              │
-│  ├── 52  DRAW_SECTOR         绘制扇形                                  │
-│  ├── 53  DRAW_TEXT_ON_PATH   沿路径绘制文本                            │
-│  ├── 56  DRAW_OVAL           绘制椭圆                                  │
-│  ├── 124 DRAW_PATH           绘制路径                                  │
-│  ├── 125 DRAW_TWEEN_PATH     绘制插值路径                              │
-│  ├── 133 DRAW_TEXT_ANCHOR    锚定文本绘制                              │
-│  └── 139 DRAW_CONTENT        绘制内容                                  │
-│                                                                         │
-│  数据定义 (80-89, 101-102, 123, 138, 140, 143, 148, 167, 189):         │
-│  ├── 80  DATA_FLOAT          定义浮点常量                              │
-│  ├── 81  ANIMATED_FLOAT      定义动画浮点                              │
-│  ├── 101 DATA_BITMAP         定义位图数据                              │
-│  ├── 102 DATA_TEXT           定义文本数据                              │
-│  ├── 123 DATA_PATH           定义路径数据                              │
-│  ├── 138 COLOR_CONSTANT      定义颜色常量                              │
-│  ├── 140 DATA_INT            定义整数常量                              │
-│  └── 143 DATA_BOOLEAN        定义布尔常量                              │
-│                                                                         │
-│  表达式与函数 (134-137, 144, 166, 168, 178, 193, 196-199):             │
-│  ├── 134 COLOR_EXPRESSIONS   颜色表达式                                │
-│  ├── 135 TEXT_FROM_FLOAT     浮点转文本                                │
-│  ├── 136 TEXT_MERGE          文本合并                                  │
-│  ├── 137 NAMED_VARIABLE      命名变量                                  │
-│  ├── 144 INTEGER_EXPRESSION  整数表达式                                │
-│  ├── 166 FUNCTION_CALL       函数调用                                  │
-│  ├── 168 FUNCTION_DEFINE     函数定义                                  │
-│  ├── 178 CONDITIONAL_OPS     条件操作                                  │
-│  └── 193 PATH_EXPRESSION     路径表达式                                │
-│                                                                         │
-│  矩阵变换 (126-132, 181, 186-188):                                     │
-│  ├── 126 MATRIX_SCALE        缩放矩阵                                  │
-│  ├── 127 MATRIX_TRANSLATE    平移矩阵                                  │
-│  ├── 128 MATRIX_SKEW         倾斜矩阵                                  │
-│  ├── 129 MATRIX_ROTATE       旋转矩阵                                  │
-│  ├── 130 MATRIX_SAVE         保存矩阵                                  │
-│  ├── 131 MATRIX_RESTORE      恢复矩阵                                  │
-│  └── 132 MATRIX_SET          设置矩阵                                  │
-│                                                                         │
-│  布局操作 (2, 14, 16, 54-55, 58-59, 67, 107-108, 200-243):             │
-│  ├── 2   COMPONENT_START     组件开始                                  │
-│  ├── 14  ANIMATION_SPEC      动画规格                                  │
-│  ├── 16  MODIFIER_WIDTH      宽度修饰符                                │
-│  ├── 55  MODIFIER_BACKGROUND 背景修饰符                                │
-│  ├── 58  MODIFIER_PADDING    内边距修饰符                              │
-│  ├── 59  MODIFIER_CLICK      点击修饰符                                │
-│  ├── 200 LAYOUT_ROOT         根布局                                    │
-│  ├── 201 LAYOUT_CONTENT      布局内容                                  │
-│  ├── 202 LAYOUT_BOX          Box 布局                                  │
-│  ├── 203 LAYOUT_ROW          Row 布局                                  │
-│  ├── 204 LAYOUT_COLUMN       Column 布局                               │
-│  ├── 205 LAYOUT_CANVAS       Canvas 布局                               │
-│  ├── 214 CONTAINER_END       容器结束                                  │
-│  └── 226 MODIFIER_SCROLL     滚动修饰符                                │
-│                                                                         │
-│  高级特效 (157, 161-165, 175, 177, 179, 191, 194, 215):                │
-│  ├── 157 TOUCH_EXPRESSION    触摸表达式                                │
-│  ├── 161 PARTICLE_DEFINE     粒子定义                                  │
-│  ├── 162 PARTICLE_PROCESS    粒子处理                                  │
-│  ├── 163 PARTICLE_LOOP       粒子循环                                  │
-│  ├── 164 IMPULSE_START       脉冲开始                                  │
-│  ├── 165 IMPULSE_PROCESS     脉冲处理                                  │
-│  ├── 175 PATH_COMBINE        路径组合                                  │
-│  ├── 177 HAPTIC_FEEDBACK     触觉反馈                                  │
-│  └── 191 WAKE_IN             唤醒定时                                  │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+```kotlin
+@Composable
+@RemoteComposable
+fun TouchDragContent() {
+    val posX = rememberMutableRemoteFloat(150f)
+    val posY = rememberMutableRemoteFloat(150f)
 
-### 4.3 数据类型编码
+    addTouch(
+        variableX = posX,
+        variableY = posY,
+        startX = 0f.rf,
+        startY = 0f.rf,
+        stopMode = STOP_ABSOLUTE_POS,
+    )
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    数据类型编码规范                                      │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  基本类型 (大端序):                                                     │
-│  ┌─────────────┬─────────────────────────────────────────────────────┐ │
-│  │ Type        │ Encoding                                            │ │
-│  ├─────────────┼─────────────────────────────────────────────────────┤ │
-│  │ byte        │ 1 byte                                              │ │
-│  │ boolean     │ 1 byte (1=true, 0=false)                            │ │
-│  │ short       │ 2 bytes [byte1 << 8 | byte2]                        │ │
-│  │ int         │ 4 bytes [b1<<24 | b2<<16 | b3<<8 | b4]              │ │
-│  │ long        │ 8 bytes [b1<<56 | ... | b8]                         │ │
-│  │ float       │ 4 bytes (IEEE 754, Float.floatToRawIntBits)         │ │
-│  │ double      │ 8 bytes (IEEE 754, Double.doubleToRawLongBits)      │ │
-│  │ byte[]      │ 4 bytes length + N bytes                            │ │
-│  │ String      │ 4 bytes length + UTF-8 bytes                        │ │
-│  └─────────────┴─────────────────────────────────────────────────────┘ │
-│                                                                         │
-│  NaN ID 编码 (变量引用优化):                                            │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  IEEE 754 NaN 格式:                                              │   │
-│  │  ┌────┬─────────┬────────────────────────────────────────┐      │   │
-│  │  │Sign│ Exponent│ Mantissa (payload)                     │      │   │
-│  │  │ 1b │ 8 bits  │ 23 bits                                │      │   │
-│  │  │ 0  │ 11111111│ 10000000000000000000000 (quiet NaN)   │      │   │
-│  │  └────┴─────────┴────────────────────────────────────────┘      │   │
-│  │                                                                 │   │
-│  │  编码: 0x7FC00000 | (id & 0x003FFFFF)                           │   │
-│  │  解码: 如果 Float.isNaN(value) 则 id = value & 0x003FFFFF       │   │
-│  │                                                                 │   │
-│  │  优势: 在浮点参数中无缝嵌入变量引用，无需额外类型标记            │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  操作参数模式:                                                          │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  模式 1: 固定参数 (如 DRAW_RECT: left, top, right, bottom)      │   │
-│  │  模式 2: 变长参数 (如 PATH_CREATE: 命令序列)                    │   │
-│  │  模式 3: 嵌套操作 (如 COMPONENT_START → 子操作 → CONTAINER_END) │   │
-│  │  模式 4: 引用数据 (如 DRAW_BITMAP: 引用之前定义的 DATA_BITMAP)  │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+    RemoteBox(modifier = RemoteModifier.fillMaxSize()) {
+        RemoteBox(
+            modifier = RemoteModifier
+                .size(60.rdp)
+                .offset(x = posX.rdp, y = posY.rdp)
+                .background(RemoteColor(Color.Red))
+                .clip(RoundedCornerShape(30.dp)),
+        )
+    }
+}
 ```
 
 ---
 
-## 5. 核心运行机制
+## 11. 状态管理
 
-### 5.1 文档加载与解析流程
+### 11.1 Glance 状态管理（DataStore）
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    文档加载与解析流程                                    │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌──────────────┐                                                       │
-│  │  byte[] doc  │  原始二进制文档                                       │
-│  └──────┬───────┘                                                       │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  1. 创建 WireBuffer                                              │   │
-│  │     WireBuffer buffer = new WireBuffer(doc.length);              │   │
-│  │     buffer.mBuffer = doc;                                        │   │
-│  │     buffer.mSize = doc.length;                                   │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  2. 创建 RemoteContext (或子类)                                  │   │
-│  │     RemoteContext context = new MyRemoteContext();               │   │
-│  │     context.setDensity(density);                                 │   │
-│  │     context.setPaintContext(paintContext);                       │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  3. 操作分发循环                                                 │   │
-│  │     while (buffer.available()) {                                 │   │
-│  │         int opCode = buffer.readOperationType(); // 读 1 byte    │   │
-│  │         CompanionOperation op = Operations.get(opCode);          │   │
-│  │         if (op != null) {                                        │   │
-│  │             op.read(buffer, context); // 解码并执行              │   │
-│  │         }                                                        │   │
-│  │     }                                                            │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  4. 状态初始化                                                   │   │
-│  │     • 加载所有 DATA_* 操作 (颜色/文本/位图/路径等)              │   │
-│  │     • 初始化主题                                                 │   │
-│  │     • 设置根内容行为                                             │   │
-│  │     • 注册点击区域                                               │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  5. 首次渲染                                                     │   │
-│  │     • 执行所有绘制操作 (DRAW_*)                                  │   │
-│  │     • 计算布局 (LAYOUT_*)                                        │   │
-│  │     • 输出到 PaintContext                                        │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```kotlin
+val Context.widgetDataStore by preferencesDataStore("widget_prefs")
+
+class StatefulWidget : GlanceAppWidget() {
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val store = context.widgetDataStore
+        val initial = store.data.first()
+
+        provideContent {
+            val prefs by store.data.collectAsState(initial)
+            val title = prefs[TITLE_KEY] ?: "Default"
+            Column {
+                Text(title)
+                Button("Update", onClick = actionRunCallback<UpdateAction>())
+            }
+        }
+    }
+
+    companion object {
+        val TITLE_KEY = stringPreferencesKey("title")
+    }
+}
 ```
 
-### 5.2 渲染流水线
+### 11.2 RemoteCompose 状态管理
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    渲染流水线                                            │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  帧触发 (每帧/按需)                                              │   │
-│  │  ├── Choreographer 回调 (Android)                                │   │
-│  │  ├── 手动调用 repaint()                                          │   │
-│  │  └── 触摸/状态变更事件                                           │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  1. 更新动画时间                                                 │   │
-│  │     context.setAnimationTime(currentTime);                       │   │
-│  │     context.currentTime = clock.millis();                        │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  2. 更新变量依赖                                                 │   │
-│  │     int nextUpdate = context.updateOps();                        │   │
-│  │     • 更新所有 ANIMATED_FLOAT                                    │   │
-│  │     • 通知监听变量变更的 Operation                               │   │
-│  │     • 返回距离下次更新的毫秒数                                   │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  3. 重新遍历文档                                                 │   │
-│  │     buffer.reset(); // 重置读指针到开头                          │   │
-│  │     while (buffer.available()) {                                 │   │
-│  │         int opCode = buffer.readOperationType();                 │   │
-│  │         // 根据 ContextMode 选择性执行                           │   │
-│  │         // UNSET: 执行所有, DATA: 仅数据, PAINT: 仅绘制          │   │
-│  │     }                                                            │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  4. 布局计算 (两阶段)                                            │   │
-│  │     阶段 1 (Measure):                                            │   │
-│  │     • 自上而下传递约束 (Constraints)                             │   │
-│  │     • 每个 LayoutManager 计算自身尺寸                            │   │
-│  │                                                                    │   │
-│  │     阶段 2 (Layout):                                             │   │
-│  │     • 自上而下分配实际尺寸和位置                                 │   │
-│  │     • 处理 padding/offset/alignment                              │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  5. 绘制输出                                                     │   │
-│  │     • 遍历绘制操作 (DRAW_*)                                      │   │
-│  │     • 应用当前矩阵变换                                           │   │
-│  │     • 应用裁剪区域                                               │   │
-│  │     • 调用 PaintContext 的具体绘制方法                           │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  6. 调度下一帧                                                   │   │
-│  │     if (nextUpdate > 0 && nextUpdate < Long.MAX_VALUE) {         │   │
-│  │         scheduleRepaint(nextUpdate); // 动画需要继续             │   │
-│  │     }                                                            │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+```kotlin
+@Composable
+@RemoteComposable
+fun StatefulRCContent() {
+    val counter = rememberMutableRemoteInt(0)
+    val isVisible = rememberMutableRemoteInt(1)
+    val scale = rememberMutableRemoteFloat(1f)
 
-### 5.3 布局系统
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    布局系统架构                                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  布局组件层次:                                                          │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  RootLayoutComponent (LAYOUT_ROOT)                               │   │
-│  │  └── 根容器，定义整体滚动/对齐/缩放行为                          │   │
-│  │       └── LayoutComponentContent (LAYOUT_CONTENT)                │   │
-│  │            └── 实际内容容器                                      │   │
-│  │                 ├── BoxLayout (LAYOUT_BOX)                       │   │
-│  │                 ├── ColumnLayout (LAYOUT_COLUMN)                 │   │
-│  │                 ├── RowLayout (LAYOUT_ROW)                       │   │
-│  │                 ├── FlowLayout (LAYOUT_FLOW)                     │   │
-│  │                 ├── CanvasLayout (LAYOUT_CANVAS)                 │   │
-│  │                 ├── TextLayout (LAYOUT_TEXT)                     │   │
-│  │                 ├── ImageLayout (LAYOUT_IMAGE)                   │   │
-│  │                 ├── StateLayout (LAYOUT_STATE)                   │   │
-│  │                 ├── FitBoxLayout (LAYOUT_FIT_BOX)                │   │
-│  │                 ├── CollapsibleColumnLayout                      │   │
-│  │                 └── CollapsibleRowLayout                         │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  两阶段布局算法:                                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Measure 阶段 (自下而上)                                         │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │ Constraints │──▶ 父组件传递最大/最小宽高约束                  │   │
-│  │  └──────┬──────┘                                                │   │
-│  │         │                                                       │   │
-│  │         ▼                                                       │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │ LayoutManager│──▶ 根据约束和子组件计算自身尺寸                │   │
-│  │  │  measure()  │                                                │   │
-│  │  └──────┬──────┘                                                │   │
-│  │         │                                                       │   │
-│  │         ▼                                                       │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │   Return    │──▶ 返回 measuredWidth, measuredHeight          │   │
-│  │  │   Size      │                                                │   │
-│  │  └─────────────┘                                                │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Layout 阶段 (自上而下)                                          │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │  Parent     │──▶ 父组件分配实际 x, y, width, height          │   │
-│  │  │  Bounds     │                                                │   │
-│  │  └──────┬──────┘                                                │   │
-│  │         │                                                       │   │
-│  │         ▼                                                       │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │ LayoutManager│──▶ 根据分配尺寸安排子组件位置                  │   │
-│  │  │  layout()   │                                                │   │
-│  │  └──────┬──────┘                                                │   │
-│  │         │                                                       │   │
-│  │         ▼                                                       │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │   Children  │──▶ 递归调用子组件的 layout()                   │   │
-│  │  │   layout()  │                                                │   │
-│  │  └─────────────┘                                                │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  Modifier 处理顺序:                                                     │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  1. 尺寸约束 (width/height/widthIn/heightIn)                     │   │
-│  │  2. 折叠优先级 (collapsiblePriority)                             │   │
-│  │  3. 内边距 (padding)                                             │   │
-│  │  4. 背景 (background)                                            │   │
-│  │  5. 边框 (border)                                                │   │
-│  │  6. 圆角裁剪 (roundedClipRect)                                   │   │
-│  │  7. 矩形裁剪 (clipRect)                                          │   │
-│  │  8. 点击 (click)                                                 │   │
-│  │  9. 触摸 (touchDown/touchUp/touchCancel)                         │   │
-│  │  10. 偏移 (offset)                                               │   │
-│  │  11. Z轴层级 (zIndex)                                            │   │
-│  │  12. 图形层 (graphicsLayer)                                      │   │
-│  │  13. 滚动 (scroll)                                               │   │
-│  │  14. 跑马灯 (marquee)                                            │   │
-│  │  15. 水波纹 (ripple)                                             │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 5.4 表达式引擎
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    表达式引擎架构                                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  表达式类型:                                                            │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐       │
-│  │ FloatExpression │  │IntegerExpression│  │ ColorExpression │       │
-│  │ ─────────────── │  │ ─────────────── │  │ ─────────────── │       │
-│  │ 浮点表达式      │  │ 整数表达式      │  │ 颜色表达式      │       │
-│  │ • 常量          │  │ • 常量          │  │ • 常量          │       │
-│  │ • 变量引用      │  │ • 变量引用      │  │ • 变量引用      │       │
-│  │ • 动画插值      │  │ • 条件表达式    │  │ • 混合          │       │
-│  │ • 数学运算      │  │ • 数学运算      │  │ • 主题色        │       │
-│  │ • 条件表达式    │  │                 │  │                 │       │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘       │
-│                                                                         │
-│  浮点表达式操作码 (FloatExpression):                                    │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  0x00 CONSTANT_FLOAT    加载常量浮点                            │   │
-│  │  0x01 VAR_FLOAT         加载变量浮点                            │   │
-│  │  0x02 ADD_FLOAT         加法                                    │   │
-│  │  0x03 SUBTRACT_FLOAT    减法                                    │   │
-│  │  0x04 MULTIPLY_FLOAT    乘法                                    │   │
-│  │  0x05 DIVIDE_FLOAT      除法                                    │   │
-│  │  0x06 MODULO_FLOAT      取模                                    │   │
-│  │  0x07 MIN_FLOAT         最小值                                  │   │
-│  │  0x08 MAX_FLOAT         最大值                                  │   │
-│  │  0x09 CLAMP_FLOAT       钳制                                    │   │
-│  │  0x0A LERP_FLOAT        线性插值                                │   │
-│  │  0x0B INTERPOLATE_FLOAT 曲线插值 (支持多种 easing)              │   │
-│  │  0x0C SPLINE_FLOAT      样条插值                                │   │
-│  │  0x0D COS_FLOAT         余弦                                    │   │
-│  │  0x0E SIN_FLOAT         正弦                                    │   │
-│  │  0x0F TAN_FLOAT         正切                                    │   │
-│  │  0x10 ACOS_FLOAT        反余弦                                  │   │
-│  │  0x11 ASIN_FLOAT        反正弦                                  │   │
-│  │  0x12 ATAN_FLOAT        反正切                                  │   │
-│  │  0x13 ATAN2_FLOAT       双参数反正切                            │   │
-│  │  0x14 SQRT_FLOAT        平方根                                  │   │
-│  │  0x15 ABS_FLOAT         绝对值                                  │   │
-│  │  0x16 FLOOR_FLOAT       向下取整                                │   │
-│  │  0x17 CEIL_FLOAT        向上取整                                │   │
-│  │  0x18 ROUND_FLOAT       四舍五入                                │   │
-│  │  0x19 POW_FLOAT         幂运算                                  │   │
-│  │  0x1A LOG_FLOAT         对数                                    │   │
-│  │  0x1B LOG10_FLOAT       常用对数                                │   │
-│  │  0x1C EXP_FLOAT         指数                                    │   │
-│  │  0x1D RANDOM_FLOAT      随机数                                  │   │
-│  │  0x1E CONDITIONAL_FLOAT 条件表达式 (if-else)                    │   │
-│  │  0x1F TO_RAD_FLOAT      转弧度                                  │   │
-│  │  0x20 TO_DEG_FLOAT      转角度                                  │   │
-│  │  0x21 MAP_FLOAT         值映射                                  │   │
-│  │  0x22 PATH_FLOAT        路径求值                                │   │
-│  │  0x23 CATMULL_FLOAT     Catmull-Rom 插值                        │   │
-│  │  0x24 MAX_BY_FLOAT      最大值索引                              │   │
-│  │  0x25 MIN_BY_FLOAT      最小值索引                              │   │
-│  │  0x26 CURVEFit_FLOAT    曲线拟合                                │   │
-│  │  0x27 CURVE_LOOKUP_FLOAT 曲线查找                               │   │
-│  │  0x28 CURVE_X_FLOAT     曲线 X 求值                             │   │
-│  │  0x29 CURVE_Y_FLOAT     曲线 Y 求值                             │   │
-│  │  0x2A CURVE_Z_FLOAT     曲线 Z 求值                             │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  缓动函数 (Easing):                                                     │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  0: Linear          线性                                         │   │
-│  │  1: EaseInQuad      二次加速                                     │   │
-│  │  2: EaseOutQuad     二次减速                                     │   │
-│  │  3: EaseInOutQuad   二次加减速                                   │   │
-│  │  4: EaseInCubic     三次加速                                     │   │
-│  │  5: EaseOutCubic    三次减速                                     │   │
-│  │  6: EaseInOutCubic  三次加减速                                   │   │
-│  │  7: EaseInQuart     四次加速                                     │   │
-│  │  8: EaseOutQuart    四次减速                                     │   │
-│  │  9: EaseInOutQuart  四次加减速                                   │   │
-│  │  10: EaseInQuint    五次加速                                     │   │
-│  │  11: EaseOutQuint   五次减速                                     │   │
-│  │  12: EaseInOutQuint 五次加减速                                   │   │
-│  │  13: EaseInSine     正弦加速                                     │   │
-│  │  14: EaseOutSine    正弦减速                                     │   │
-│  │  15: EaseInOutSine  正弦加减速                                   │   │
-│  │  16: EaseInExpo     指数加速                                     │   │
-│  │  17: EaseOutExpo    指数减速                                     │   │
-│  │  18: EaseInOutExpo  指数加减速                                   │   │
-│  │  19: EaseInCirc     圆形加速                                     │   │
-│  │  20: EaseOutCirc    圆形减速                                     │   │
-│  │  21: EaseInOutCirc  圆形加减速                                   │   │
-│  │  22: EaseInElastic  弹性加速                                     │   │
-│  │  23: EaseOutElastic 弹性减速                                     │   │
-│  │  24: EaseInOutElastic 弹性加减速                                 │   │
-│  │  25: EaseInBack     回退加速                                     │   │
-│  │  26: EaseOutBack    回退减速                                     │   │
-│  │  27: EaseInOutBack  回退加减速                                   │   │
-│  │  28: EaseInBounce   弹跳加速                                     │   │
-│  │  29: EaseOutBounce  弹跳减速                                     │   │
-│  │  30: EaseInOutBounce 弹跳加减速                                  │   │
-│  │  31: CustomSpline   自定义样条                                   │   │
-│  │  32: CustomCubic    自定义三次曲线                               │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  表达式求值流程:                                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  1. 读取操作码 (1 byte)                                          │   │
-│  │  2. 根据操作码读取操作数 (常量/变量 ID/子表达式)                 │   │
-│  │  3. 递归求值子表达式                                             │   │
-│  │  4. 执行运算并返回结果                                           │   │
-│  │  5. 如果是 INTERPOLATE/SPLINE，应用缓动函数                      │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 5.5 触摸与交互
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    触摸与交互系统                                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  触摸事件流:                                                            │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  触摸按下 (ACTION_DOWN)                                          │   │
-│  │  ├── 遍历点击区域 (ClickArea)                                    │   │
-│  │  ├── 计算相对坐标 (x - bounds.left, y - bounds.top)              │   │
-│  │  ├── 更新 TOUCH_POS_X/Y 变量                                     │   │
-│  │  ├── 更新 TOUCH_EVENT_TIME 变量                                  │   │
-│  │  ├── 执行 TouchExpression (如果有)                               │   │
-│  │  └── 触发 onClick / onTouchDown 回调                             │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  触摸移动 (ACTION_MOVE)                                          │   │
-│  │  ├── 更新 TOUCH_POS_X/Y 变量                                     │   │
-│  │  ├── 计算触摸速度 TOUCH_VEL_X/Y                                  │   │
-│  │  ├── 更新滚动偏移 (如果组件可滚动)                               │   │
-│  │  └── 触发 onTouch 回调                                           │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  触摸抬起 (ACTION_UP)                                            │   │
-│  │  ├── 更新 TOUCH_POS_X/Y 变量                                     │   │
-│  │  ├── 如果仍在点击区域内 → 触发 onClick                           │   │
-│  │  ├── 执行 TouchExpression                                        │   │
-│  │  └── 触发 onTouchUp 回调                                         │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  TouchExpression 操作码:                                                │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  0x00 TOUCH_DOWN          触摸按下                               │   │
-│  │  0x01 TOUCH_UP            触摸抬起                               │   │
-│  │  0x02 TOUCH_MOVE          触摸移动                               │   │
-│  │  0x03 TOUCH_CANCEL        触摸取消                               │   │
-│  │  0x04 SET_TRUE            设为 true                              │   │
-│  │  0x05 SET_FALSE           设为 false                             │   │
-│  │  0x06 TOGGLE              切换                                   │   │
-│  │  0x07 INCREMENT           增加                                   │   │
-│  │  0x08 DECREMENT           减少                                   │   │
-│  │  0x09 CALL_FUNCTION       调用函数                               │   │
-│  │  0x0A SET_VALUE           设置值                                 │   │
-│  │  0x0B JUMP                跳转                                   │   │
-│  │  0x0C JUMP_IF_TRUE        条件跳转 (true)                        │   │
-│  │  0x0D JUMP_IF_FALSE       条件跳转 (false)                       │   │
-│  │  0x0E JUMP_IF_GREATER     大于跳转                             │   │
-│  │  0x0F JUMP_IF_LESS        小于跳转                             │   │
-│  │  0x10 ANIMATE_TO          动画到目标值                           │   │
-│  │  0x11 ANIMATE_TO_VALUE    动画到指定值                           │   │
-│  │  0x12 ANIMATE_TOgether    同时动画多个值                         │   │
-│  │  0x13 SCROLL_TO           滚动到                                 │   │
-│  │  0x14 SCROLL_BY           滚动偏移                               │   │
-│  │  0x15 SCROLL_TO_INDEX     滚动到索引                             │   │
-│  │  0x16 SCROLL_BY_WITH_BOUNCE 弹性滚动                             │   │
-│  │  0x17 SCROLL_WITH_BOUNCE  弹性滚动                               │   │
-│  │  0x18 SCROLL_STOP         停止滚动                               │   │
-│  │  0x19 SCROLL_FLING        惯性滚动                               │   │
-│  │  0x1A SCROLL_JUMP         滚动跳转                               │   │
-│  │  0x1B SCROLL_TO_POSITION  滚动到位置                             │   │
-│  │  0x1C SCROLL_TO_VALUE     滚动到值                               │   │
-│  │  0x1D SCROLL_TO_INDEX_WITH_OFFSET 偏移滚动到索引                 │   │
-│  │  0x1E SCROLL_TO_INDEX_WITH_BOUNCE 弹性滚动到索引                 │   │
-│  │  0x1F SCROLL_TO_INDEX_WITH_BOUNCE_AND_OFFSET 弹性偏移滚动        │   │
-│  │  0x20 SCROLL_TO_INDEX_WITH_BOUNCE_AND_OFFSET_AND_BOUNCE ...    │   │
-│  │  ... (更多滚动操作)                                              │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  交互回调:                                                              │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  RemoteContext 抽象方法:                                         │   │
-│  │  ├── runAction(int id, String metadata)       → 运行动作       │   │
-│  │  ├── runNamedAction(int id, Object value)     → 命名动作       │   │
-│  │  ├── hapticEffect(int type)                   → 触觉反馈       │   │
-│  │  └── addTouchListener(TouchListener listener) → 触摸监听       │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+    RemoteColumn(modifier = RemoteModifier.fillMaxSize()) {
+        RemoteText(text = "Count: ".rs + counter.toRemoteString())
+        RemoteBox(
+            modifier = RemoteModifier
+                .size(100.rdp)
+                .scale(scale.rf)
+                .clickable(ValueChange(counter, counter + 1))
+                .background(RemoteColor(Color.Blue)),
+        )
+    }
+}
 ```
 
 ---
 
-## 6. 创建 API 架构
+## 12. 测试
 
-### 6.1 三层 API 设计
+### 12.1 Glance 单元测试
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│              创建 API 三层架构对比                                       │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Layer 3: Compose UI 集成                                        │   │
-│  │  ─────────────────────                                           │   │
-│  │  目标用户: 已有 Compose UI 项目，需要嵌入远程渲染                 │   │
-│  │                                                                   │   │
-│  │  @Composable                                                      │   │
-│  │  fun WeatherWidget(weatherData: WeatherData) {                    │   │
-│  │      val temp = rememberRemoteFloat(weatherData.temperature)      │   │
-│  │      RemoteCanvas(modifier = Modifier.size(200.dp, 200.dp)) {     │   │
-│  │          val paint = rememberRemotePaint().apply {                │   │
-│  │              color = RemoteColor(0xFF2196F3)                      │   │
-│  │          }                                                        │   │
-│  │          drawCircle(100f, 100f, temp * 2f, paint)                 │   │
-│  │          drawText("${temp.value}°C", 80f, 100f)                   │   │
-│  │      }                                                            │   │
-│  │  }                                                                │   │
-│  │                                                                   │   │
-│  │  特点:                                                            │   │
-│  │  • 与 Compose 生命周期集成                                        │   │
-│  │  • 支持 remember/derivedStateOf 等 Compose 状态管理             │   │
-│  │  • 自动处理重组和重绘                                             │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Layer 2: Kotlin DSL                                             │   │
-│  │  ─────────────────                                               │   │
-│  │  目标用户: 服务端开发者，生成远程 UI 文档                         │   │
-│  │                                                                   │   │
-│  │  val document = remoteComposeDocument(width = 400, height = 400) {│   │
-│  │      val temperature = floatResource(id = R.string.temp)          │   │
-│  │                                                                   │   │
-│  │      Column(                                                      │   │
-│  │          modifier = Modifier                                      │   │
-│  │              .padding(16f)                                        │   │
-│  │              .background(ThemeColors.surface),                    │   │
-│  │          horizontal = RcHorizontalPositioning.Center              │   │
-│  │      ) {                                                          │   │
-│  │          Text(                                                    │   │
-│  │              text = "Temperature",                                │   │
-│  │              fontSize = 18f,                                      │   │
-│  │              color = ThemeColors.onSurface                        │   │
-│  │          )                                                        │   │
-│  │          Text(                                                    │   │
-│  │              text = temperature.toText(),                         │   │
-│  │              fontSize = 36f,                                      │   │
-│  │              color = ThemeColors.primary                          │   │
-│  │          )                                                        │   │
-│  │      }                                                            │   │
-│  │  }                                                                │   │
-│  │                                                                   │   │
-│  │  val bytes = document.toByteArray() // 发送到远程设备            │   │
-│  │                                                                   │   │
-│  │  特点:                                                            │   │
-│  │  • 声明式语法，类似 Compose                                       │   │
-│  │  • 类型安全 (RcFloat/RcInt/RcColor)                               │   │
-│  │  • 支持主题和资源引用                                             │   │
-│  │  • 编译时检查 Modifier 组合                                       │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Layer 1: Java 过程式 API                                        │   │
-│  │  ───────────────────────                                         │   │
-│  │  目标用户: 需要极致性能或底层控制的开发者                         │   │
-│  │                                                                   │   │
-│  │  RemoteComposeWriter writer = new RemoteComposeWriter();          │   │
-│  │                                                                   │   │
-│  │  // Header                                                        │   │
-│  │  writer.addHeader(1, 0, 0, 400, 400, 0, null);                    │   │
-│  │                                                                   │   │
-│  │  // Theme                                                         │   │
-│  │  writer.addTheme(0, 0xFF2196F3, 0xFF03A9F4, 0xFFFFFFFF, ...);    │   │
-│  │                                                                   │   │
-│  │  // Data                                                          │   │
-│  │  int tempId = writer.addFloatConstant(25.5f);                     │   │
-│  │  int textId = writer.addTextData("Temperature");                  │   │
-│  │                                                                   │   │
-│  │  // Layout                                                        │   │
-│  │  writer.addComponentStart(1, 0, 0, 0, 0);                         │   │
-│  │  writer.addColumnStart(0, 1, 0, 0, 0); // CENTER, TOP            │   │
-│  │                                                                   │   │
-│  │  // Draw                                                          │   │
-│  │  writer.addDrawText(textId, 200f, 100f);                          │   │
-│  │  writer.addDrawText(tempId, 200f, 150f);                          │   │
-│  │                                                                   │   │
-│  │  writer.addContainerEnd();                                        │   │
-│  │  writer.addContainerEnd();                                        │   │
-│  │                                                                   │   │
-│  │  byte[] document = writer.getBytes();                             │   │
-│  │                                                                   │   │
-│  │  特点:                                                            │   │
-│  │  • 零抽象开销                                                     │   │
-│  │  • 完全控制 wire format                                           │   │
-│  │  • 适合代码生成器和模板系统                                       │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```kotlin
+@Test
+fun testWidgetContent() = runGlanceAppWidgetUnitTest {
+    setAppWidgetSize(DpSize(300.dp, 200.dp))
+    provideComposable {
+        MyWidgetContent()
+    }
+    onNode(hasText("Hello")).assertIsDisplayed()
+    onNode(hasClickAction<ActionCallback>()).assertHasRunCallbackClickAction<MyAction>()
+}
 ```
 
-### 6.2 Modifier 系统
+### 12.2 RemoteCompose 截图测试
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Modifier 系统架构                                     │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  Modifier 类型:                                                         │
-│  ┌─────────────────────────────┐  ┌─────────────────────────────┐     │
-│  │  RecordingModifier          │  │  RemoteModifier             │     │
-│  │  ─────────────────          │  │  ────────────────           │     │
-│  │  静态 Modifier              │  │  动态 Modifier              │     │
-│  │  序列化时写入 wire format   │  │  绑定远程状态               │     │
-│  │                             │  │  运行时响应状态变更         │     │
-│  └─────────────────────────────┘  └─────────────────────────────┘     │
-│                                                                         │
-│  RecordingModifier 元素:                                                │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  尺寸类:                                                          │   │
-│  │  ├── WidthModifier(float width)                                   │   │
-│  │  ├── HeightModifier(float height)                                 │   │
-│  │  ├── WidthInModifier(float min, float max)                        │   │
-│  │  ├── HeightInModifier(float min, float max)                       │   │
-│  │  └── SizeModifier(float width, float height)                      │   │
-│  │                                                                   │   │
-│  │  外观类:                                                          │   │
-│  │  ├── BackgroundModifier(int color)                                │   │
-│  │  ├── BorderModifier(float width, int color)                       │   │
-│  │  ├── PaddingModifier(float start, top, end, bottom)               │   │
-│  │  ├── RoundedClipRectModifier(float radius)                        │   │
-│  │  └── ClipRectModifier(float left, top, right, bottom)             │   │
-│  │                                                                   │   │
-│  │  交互类:                                                          │   │
-│  │  ├── ClickModifier(int id, String metadata)                       │   │
-│  │  ├── TouchDownModifier(int id)                                    │   │
-│  │  ├── TouchUpModifier(int id)                                      │   │
-│  │  ├── TouchCancelModifier(int id)                                  │   │
-│  │  ├── ScrollModifier(int orientation)                              │   │
-│  │  └── RippleModifier(int color, float radius)                      │   │
-│  │                                                                   │   │
-│  │  布局类:                                                          │   │
-│  │  ├── OffsetModifier(float x, float y)                             │   │
-│  │  ├── ZIndexModifier(int zIndex)                                   │   │
-│  │  ├── GraphicsLayerModifier(float alpha, rotation, scale...)       │   │
-│  │  ├── MarqueeModifier(int iterations, float speed)                 │   │
-│  │  └── VisibilityModifier(int visibility)                           │   │
-│  │                                                                   │   │
-│  │  动作类:                                                          │   │
-│  │  ├── HostActionModifier(int id)                                   │   │
-│  │  ├── HostNamedActionModifier(int id)                              │   │
-│  │  ├── RunActionModifier(int id)                                    │   │
-│  │  └── ValueChangeActionModifier(int valueId, int targetId)         │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  Modifier 组合 (Kotlin DSL):                                            │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Modifier.padding(16f)                                            │   │
-│  │         .background(0xFF2196F3)                                   │   │
-│  │         .border(2f, 0xFF000000)                                   │   │
-│  │         .roundedClipRect(8f)                                      │   │
-│  │         .click(1, "button_click")                                  │   │
-│  │                                                                   │   │
-│  │  实现: then() 函数链式组合                                         │   │
-│  │  interface Modifier {                                             │   │
-│  │      fun then(other: Modifier): Modifier                          │   │
-│  │  }                                                                │   │
-│  │                                                                   │   │
-│  │  RecordingModifier 内部维护 List<ModifierElement>                 │   │
-│  │  序列化时遍历列表，逐个写入 wire format                            │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  Modifier 注册表 (MODIFIER_REGISTRY.md):                                │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  创建新 Modifier 的步骤:                                          │   │
-│  │  1. 在 remote-core 定义操作类 (如 MyModifierOperation.java)      │   │
-│  │  2. 在 Operations.java 注册操作码                                 │   │
-│  │  3. 在 remote-creation 定义 RecordingModifier 元素               │   │
-│  │  4. 在 Modifier.kt 添加 DSL 扩展函数                              │   │
-│  │  5. 在 remote-creation-compose 添加 Compose 集成 (如果需要)      │   │
-│  │  6. 更新 api/current.txt (公共 API)                               │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 6.3 远程状态绑定
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    远程状态绑定架构                                      │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  状态类型:                                                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
-│  │  RcFloat    │  │  RcInteger  │  │  RcColor    │  │  RcString   │   │
-│  │  ────────   │  │  ─────────  │  │  ────────   │  │  ─────────  │   │
-│  │  浮点状态   │  │  整数状态   │  │  颜色状态   │  │  字符串状态 │   │
-│  │  • 常量     │  │  • 常量     │  │  • 常量     │  │  • 常量     │   │
-│  │  • 变量引用 │  │  • 变量引用 │  │  • 变量引用 │  │  • 变量引用 │   │
-│  │  • 表达式   │  │  • 表达式   │  │  • 表达式   │  │  • 表达式   │   │
-│  │  • 动画     │  │  • 条件     │  │  • 主题色   │  │  • 查找     │   │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘   │
-│                                                                         │
-│  状态绑定流程:                                                          │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  服务端 (创建时)                                                  │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │ val temp =  │──▶ 创建 RcFloat 变量                           │   │
-│  │  │   rcFloat(  │                                                │   │
-│  │  │     id = 1, │──▶ 分配唯一 ID                                 │   │
-│  │  │     initial │──▶ 设置初始值                                  │   │
-│  │  │   )         │                                                │   │
-│  │  └──────┬──────┘                                                │   │
-│  │         │                                                        │   │
-│  │         ▼                                                        │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │ drawCircle( │──▶ 使用 RcFloat 作为参数                       │   │
-│  │  │   centerX = │──▶ 编码为 NaN ID 引用                          │   │
-│  │  │   temp,     │                                                │   │
-│  │  │   ...       │                                                │   │
-│  │  │ )           │                                                │   │
-│  │  └──────┬──────┘                                                │   │
-│  │         │                                                        │   │
-│  │         ▼                                                        │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │ 序列化为    │──▶ 生成 wire format                            │   │
-│  │  │ byte[]      │──▶ 包含 DATA_FLOAT 操作                        │   │
-│  │  └──────┬──────┘                                                │   │
-│  │         │                                                        │   │
-│  │    网络传输                                                        │   │
-│  │         │                                                        │   │
-│  │         ▼                                                        │   │
-│  │  客户端 (运行时)                                                   │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │ 解析        │──▶ 读取 DATA_FLOAT 操作                        │   │
-│  │  │ DATA_FLOAT  │──▶ 存储到 RemoteContext 状态表                 │   │
-│  │  └──────┬──────┘                                                │   │
-│  │         │                                                        │   │
-│  │         ▼                                                        │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │ 渲染        │──▶ 遇到 NaN ID 引用                            │   │
-│  │  │ drawCircle  │──▶ 查询状态表获取当前值                        │   │
-│  │  │             │──▶ 使用实际值绘制                              │   │
-│  │  └──────┬──────┘                                                │   │
-│  │         │                                                        │   │
-│  │         ▼                                                        │   │
-│  │  ┌─────────────┐                                                │   │
-│  │  │ 状态更新    │──▶ 服务端推送新值                              │   │
-│  │  │ setNamedFloat│──▶ 客户端调用 overrideFloat(id, newValue)    │   │
-│  │  │ Override    │──▶ 触发重绘                                    │   │
-│  │  └─────────────┘                                                │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  状态覆盖 API (RemoteContext):                                          │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  • setNamedColorOverride(String name, int color)                 │   │
-│  │  • setNamedStringOverride(String name, String value)             │   │
-│  │  • setNamedBooleanOverride(String name, boolean value)           │   │
-│  │  • setNamedIntegerOverride(String name, int value)               │   │
-│  │  • setNamedFloatOverride(String name, float value)               │   │
-│  │  • setNamedDataOverride(String name, Object value)               │   │
-│  │  • clearNamed*Override(String name)  // 清除覆盖，恢复默认值     │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```kotlin
+@Test
+fun testRemoteComposeContent() {
+    val document = runBlocking {
+        captureSingleRemoteDocument(
+            context = context,
+            profile = RcPlatformProfiles.WIDGETS_V7,
+        ) {
+            MyWidgetContent()
+        }
+    }
+    assertNotNull(document.bytes)
+}
 ```
 
 ---
 
-## 7. 数据流与状态管理
+## 13. 完整 Demo 代码
+
+以下是一个完整的可运行 Demo 项目，展示 Glance + RemoteCompose 的三种开发方式。
+
+### 13.1 项目结构
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    数据流与状态管理                                      │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                    服务端数据流                                    │   │
-│  │                                                                   │   │
-│  │  ┌──────────┐    ┌──────────┐    ┌──────────┐                  │   │
-│  │  │ 数据源    │───▶│ 业务逻辑  │───▶│ 创建 API  │                  │   │
-│  │  │ (DB/API) │    │ (处理)   │    │ (DSL/Java)│                  │   │
-│  │  └──────────┘    └──────────┘    └─────┬────┘                  │   │
-│  │                                        │                        │   │
-│  │                                        ▼                        │   │
-│  │                              ┌──────────────────┐              │   │
-│  │                              │ RemoteComposeBuffer│              │   │
-│  │                              │ (Wire Format)    │              │   │
-│  │                              └────────┬─────────┘              │   │
-│  │                                       │                         │   │
-│  │                                       ▼                         │   │
-│  │                              ┌──────────────────┐              │   │
-│  │                              │ byte[] document  │──────────────┼───┼──▶ 网络
-│  │                              └──────────────────┘              │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                    客户端数据流                                    │   │
-│  │                                                                   │   │
-│  │  ◀────────────────────────────────────────────────────────────── │   │
-│  │                              byte[] document                      │   │
-│  │                                        │                        │   │
-│  │                                        ▼                        │   │
-│  │  ┌───────────────────────────────────────────────────────────┐   │   │
-│  │  │  RemoteContext 状态表                                      │   │   │
-│  │  │  ┌─────────┬─────────┬─────────┬─────────┬─────────────┐ │   │   │
-│  │  │  │ Floats  │ Integers│ Colors  │ Strings │ Bitmaps     │ │   │   │
-│  │  │  │ (id→val)│ (id→val)│ (id→val)│ (id→val)│ (id→data)   │ │   │   │
-│  │  │  ├─────────┼─────────┼─────────┼─────────┼─────────────┤ │   │   │
-│  │  │  │  1→25.5 │ 10→100  │  5→blue │ 20→"Hi" │  30→png     │ │   │   │
-│  │  │  │  2→30.0 │ 11→200  │  6→red  │ 21→"Bye"│  31→jpg     │ │   │   │
-│  │  │  └─────────┴─────────┴─────────┴─────────┴─────────────┘ │   │   │
-│  │  └───────────────────────────────────────────────────────────┘   │   │
-│  │         │                                                        │   │
-│  │         │ 查询/更新                                               │   │
-│  │         ▼                                                        │   │
-│  │  ┌───────────────────────────────────────────────────────────┐   │   │
-│  │  │  渲染引擎                                                  │   │   │
-│  │  │  • 解析操作码                                              │   │   │
-│  │  │  • 遇到 NaN ID → 查状态表                                 │   │   │
-│  │  │  • 执行绘制 → PaintContext                                │   │   │
-│  │  └───────────────────────────────────────────────────────────┘   │   │
-│  │         │                                                        │   │
-│  │         ▼                                                        │   │
-│  │  ┌───────────────────────────────────────────────────────────┐   │   │
-│  │  │  用户交互                                                  │   │   │
-│  │  │  • 触摸事件 → 更新 TOUCH_POS_X/Y                          │   │   │
-│  │  │  • 点击区域 → 触发 runAction()                            │   │   │
-│  │  │  • TouchExpression → 修改变量值                           │   │   │
-│  │  │  • 变量变更 → 触发重绘                                    │   │   │
-│  │  └───────────────────────────────────────────────────────────┘   │   │
-│  │         │                                                        │   │
-│  │         │ 状态变更通知                                            │   │
-│  │         ▼                                                        │   │
-│  │  ┌───────────────────────────────────────────────────────────┐   │   │
-│  │  │  外部更新                                                  │   │   │
-│  │  │  • setNamedFloatOverride() → 覆盖状态值                   │   │   │
-│  │  │  • addCollection() → 添加集合数据                         │   │   │
-│  │  │  • putDataMap() → 添加结构化数据                          │   │   │
-│  │  └───────────────────────────────────────────────────────────┘   │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+app/
+├── src/main/
+│   ├── java/com/example/widgetdemo/
+│   │   ├── widget/
+│   │   │   ├── glance/                    # 方式一：Glance API
+│   │   │   │   ├── WeatherWidget.kt
+│   │   │   │   └── WeatherWidgetReceiver.kt
+│   │   │   ├── remote/                    # 方式二：RemoteCompose API
+│   │   │   │   ├── AnimatedWidget.kt
+│   │   │   │   └── AnimatedWidgetReceiver.kt
+│   │   │   └── base/                      # 方式三：RemoteComposeWidget
+│   │   │       └── ParticleWidget.kt
+│   │   └── MainActivity.kt
+│   ├── res/
+│   │   ├── xml/
+│   │   │   ├── weather_widget_info.xml
+│   │   │   ├── animated_widget_info.xml
+│   │   │   └── particle_widget_info.xml
+│   │   ├── layout/
+│   │   │   └── activity_main.xml
+│   │   └── values/
+│   │       └── strings.xml
+│   └── AndroidManifest.xml
+├── build.gradle.kts
+└── settings.gradle.kts
+```
+
+### 13.2 build.gradle.kts
+
+```kotlin
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "com.example.widgetdemo"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "com.example.widgetdemo"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0"
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.15"
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    // Glance
+    implementation("androidx.glance:glance:1.1.0")
+    implementation("androidx.glance:glance-appwidget:1.1.0")
+    implementation("androidx.glance:glance-material3:1.1.0")
+
+    // RemoteCompose
+    implementation("androidx.compose.remote:remote-core:1.0.0-alpha01")
+    implementation("androidx.compose.remote:remote-creation:1.0.0-alpha01")
+    implementation("androidx.compose.remote:remote-creation-core:1.0.0-alpha01")
+    implementation("androidx.compose.remote:remote-creation-compose:1.0.0-alpha01")
+
+    // Compose
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.activity:activity-compose:1.9.0")
+
+    // DataStore
+    implementation("androidx.datastore:datastore-preferences:1.1.0")
+
+    // Lifecycle
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
+
+    // Core
+    implementation("androidx.core:core-ktx:1.13.0")
+}
+```
+
+### 13.3 AndroidManifest.xml
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:label="Widget Demo"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Material3.DayNight">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 方式一：Glance Widget -->
+        <receiver
+            android:name=".widget.glance.WeatherWidgetReceiver"
+            android:enabled="@bool/glance_appwidget_available"
+            android:exported="false"
+            android:label="Weather Widget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/weather_widget_info" />
+        </receiver>
+
+        <!-- 方式二：RemoteCompose Widget -->
+        <receiver
+            android:name=".widget.remote.AnimatedWidgetReceiver"
+            android:enabled="@bool/glance_appwidget_available"
+            android:exported="false"
+            android:label="Animated Widget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/animated_widget_info" />
+        </receiver>
+
+        <!-- 方式三：Particle Widget -->
+        <receiver
+            android:name=".widget.base.ParticleWidget"
+            android:enabled="@bool/glance_appwidget_available"
+            android:exported="false"
+            android:label="Particle Widget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/particle_widget_info" />
+        </receiver>
+
+    </application>
+</manifest>
+```
+
+### 13.4 Widget 信息 XML
+
+**res/xml/weather_widget_info.xml**：
+```xml
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="180dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="110dp"
+    android:maxResizeWidth="600dp"
+    android:maxResizeHeight="450dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:widgetCategory="home_screen"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:description="@string/weather_widget_desc" />
+```
+
+**res/xml/animated_widget_info.xml**：
+```xml
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="250dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="86400000"
+    android:widgetCategory="home_screen" />
+```
+
+**res/xml/particle_widget_info.xml**：
+```xml
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="250dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="86400000"
+    android:widgetCategory="home_screen" />
+```
+
+### 13.5 方式一：Glance 天气 Widget
+
+**widget/glance/WeatherWidget.kt**：
+
+```kotlin
+package com.example.widgetdemo.widget.glance
+
+import android.content.Context
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.glance.GlanceId
+import androidx.glance.GlanceModifier
+import androidx.glance.GlanceTheme
+import androidx.glance.LocalSize
+import androidx.glance.action.ActionCallback
+import androidx.glance.action.actionRunCallback
+import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.SizeMode
+import androidx.glance.appwidget.components.Scaffold
+import androidx.glance.appwidget.components.TitleBar
+import androidx.glance.appwidget.lazy.LazyColumn
+import androidx.glance.appwidget.lazy.VerticalScrollMode
+import androidx.glance.background
+import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
+import androidx.glance.layout.Column
+import androidx.glance.layout.Row
+import androidx.glance.layout.Spacer
+import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.fillMaxWidth
+import androidx.glance.layout.height
+import androidx.glance.layout.padding
+import androidx.glance.layout.width
+import androidx.glance.text.Text
+import androidx.glance.text.TextStyle
+import androidx.glance.unit.ColorProvider
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+
+val Context.weatherDataStore by preferencesDataStore("weather_prefs")
+
+class WeatherWidget : GlanceAppWidget() {
+    override val sizeMode = SizeMode.Responsive(
+        setOf(
+            DpSize(180.dp, 110.dp),
+            DpSize(250.dp, 180.dp),
+            DpSize(350.dp, 280.dp),
+        )
+    )
+
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val store = context.weatherDataStore
+        val initial = store.data.first()
+
+        provideContent {
+            val prefs by androidx.compose.runtime.collectAsState(initial, store.data)
+            val temp = prefs[TEMP_KEY] ?: 22
+            val city = prefs[CITY_KEY] ?: "Beijing"
+            val condition = prefs[CONDITION_KEY] ?: "Sunny"
+
+            val size = LocalSize.current
+
+            Scaffold(
+                titleBar = TitleBar("Weather"),
+                backgroundColor = GlanceTheme.colors.surface,
+            ) {
+                when {
+                    size.width < 200.dp -> CompactWeather(city, temp, condition)
+                    size.width < 300.dp -> MediumWeather(city, temp, condition)
+                    else -> ExpandedWeather(city, temp, condition)
+                }
+            }
+        }
+    }
+
+    companion object {
+        val TEMP_KEY = intPreferencesKey("temperature")
+        val CITY_KEY = stringPreferencesKey("city")
+        val CONDITION_KEY = stringPreferencesKey("condition")
+    }
+}
+
+@Composable
+private fun CompactWeather(city: String, temp: Int, condition: String) {
+    Box(
+        modifier = GlanceModifier.fillMaxSize().padding(12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.Horizontal.CenterHorizontally) {
+            Text(city, style = TextStyle(fontSize = 16.sp))
+            Text("$temp°C", style = TextStyle(fontSize = 28.sp))
+            Text(condition, style = TextStyle(fontSize = 12.sp))
+        }
+    }
+}
+
+@Composable
+private fun MediumWeather(city: String, temp: Int, condition: String) {
+    Column(
+        modifier = GlanceModifier.fillMaxSize().padding(16.dp),
+        verticalAlignment = Alignment.Vertical.CenterVertically,
+    ) {
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            Column(modifier = GlanceModifier.defaultWeight()) {
+                Text(city, style = TextStyle(fontSize = 18.sp))
+                Text(condition, style = TextStyle(fontSize = 14.sp))
+            }
+            Text("$temp°C", style = TextStyle(fontSize = 36.sp))
+        }
+        Spacer(modifier = GlanceModifier.height(12.dp))
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            Text("H: ${temp + 3}°", style = TextStyle(fontSize = 14.sp))
+            Spacer(modifier = GlanceModifier.width(16.dp))
+            Text("L: ${temp - 5}°", style = TextStyle(fontSize = 14.sp))
+        }
+    }
+}
+
+@Composable
+private fun ExpandedWeather(city: String, temp: Int, condition: String) {
+    Column(modifier = GlanceModifier.fillMaxSize().padding(16.dp)) {
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            Column(modifier = GlanceModifier.defaultWeight()) {
+                Text(city, style = TextStyle(fontSize = 20.sp))
+                Text(condition, style = TextStyle(fontSize = 16.sp))
+            }
+            Text("$temp°C", style = TextStyle(fontSize = 48.sp))
+        }
+        Spacer(modifier = GlanceModifier.height(16.dp))
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            Text("H: ${temp + 3}°", style = TextStyle(fontSize = 14.sp))
+            Spacer(modifier = GlanceModifier.width(16.dp))
+            Text("L: ${temp - 5}°", style = TextStyle(fontSize = 14.sp))
+            Spacer(modifier = GlanceModifier.width(16.dp))
+            Text("Humidity: 65%", style = TextStyle(fontSize = 14.sp))
+        }
+        Spacer(modifier = GlanceModifier.height(12.dp))
+        LazyColumn(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalScrollMode = VerticalScrollMode.Normal,
+        ) {
+            items(5) { hour ->
+                Row(
+                    modifier = GlanceModifier.fillMaxWidth().height(40.dp)
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.Vertical.CenterVertically,
+                ) {
+                    Text("${12 + hour}:00", modifier = GlanceModifier.defaultWeight())
+                    Text("${temp + hour - 2}°")
+                }
+            }
+        }
+    }
+}
+
+class RefreshWeatherAction : ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: androidx.glance.action.ActionParameters,
+    ) {
+        context.weatherDataStore.updateData { prefs ->
+            prefs.toMutablePreferences().apply {
+                val current = this[WeatherWidget.TEMP_KEY] ?: 22
+                this[WeatherWidget.TEMP_KEY] = current + (0..5).random() - 2
+            }
+        }
+    }
+}
+
+class WeatherWidgetReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = WeatherWidget()
+}
+```
+
+### 13.6 方式二：RemoteCompose 动画时钟 Widget
+
+**widget/remote/AnimatedWidget.kt**：
+
+```kotlin
+package com.example.widgetdemo.widget.remote
+
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
+import android.content.Context
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.compose.runtime.Composable
+import androidx.compose.remote.creation.compose.RemoteComposable
+import androidx.compose.remote.creation.compose.RemoteModifier
+import androidx.compose.remote.creation.compose.RemoteColor
+import androidx.compose.remote.creation.compose.RemoteAlignment
+import androidx.compose.remote.creation.compose.RemoteColumn
+import androidx.compose.remote.creation.compose.RemoteBox
+import androidx.compose.remote.creation.compose.RemoteText
+import androidx.compose.remote.creation.compose.RemoteCanvas
+import androidx.compose.remote.creation.compose.RemoteRow
+import androidx.compose.remote.creation.compose.RemoteDp
+import androidx.compose.remote.creation.compose.captureSingleRemoteDocument
+import androidx.compose.remote.creation.compose.layout.RemoteSpacer
+import androidx.compose.remote.creation.profile.RcPlatformProfiles
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import android.widget.RemoteViews
+
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+class AnimatedWidgetReceiver : AppWidgetProvider() {
+    override fun onUpdate(context: Context, wm: AppWidgetManager, widgetIds: IntArray) {
+        widgetIds.forEach { widgetId ->
+            goAsync {
+                val bytes = recordAnimatedWidget(context)
+                val drawInstructions = RemoteViews.DrawInstructions.Builder(listOf(bytes)).build()
+                val remoteViews = RemoteViews(drawInstructions)
+                wm.updateAppWidget(widgetId, remoteViews)
+            }
+        }
+    }
+
+    private suspend fun recordAnimatedWidget(context: Context): ByteArray {
+        return captureSingleRemoteDocument(
+            context = context.applicationContext,
+            profile = RcPlatformProfiles.WIDGETS_V7,
+        ) {
+            AnimatedClockContent()
+        }.bytes
+    }
+}
+
+@Composable
+@RemoteComposable
+fun AnimatedClockContent() {
+    val animTime = rememberAnimatedFloat()
+
+    RemoteBox(
+        modifier = RemoteModifier.fillMaxSize().background(RemoteColor(Color(0xFF1A1A2E))),
+        contentAlignment = RemoteAlignment.Center,
+    ) {
+        RemoteColumn(
+            modifier = RemoteModifier.padding(RemoteDp(24.dp)),
+            horizontalAlignment = RemoteAlignment.CenterHorizontally,
+        ) {
+            RemoteText(
+                text = "Animated Clock",
+                color = Color(0xFFE0E0E0).rc,
+                fontSize = 18f.rf,
+            )
+            RemoteSpacer(modifier = RemoteModifier.height(16.rdp))
+            RemoteCanvas(modifier = RemoteModifier.size(200.rdp)) {
+                val cx = width / 2f.rf
+                val cy = height / 2f.rf
+                val radius = 90f.rf
+
+                drawCircle(
+                    cx = cx, cy = cy, radius = radius,
+                    paint = createPaint().apply { color = Color(0xFF16213E) }
+                )
+                drawCircle(
+                    cx = cx, cy = cy, radius = radius - 4f.rf,
+                    paint = createPaint().apply { color = Color(0xFF0F3460) }
+                )
+
+                val sec = animTime % 60f.rf
+                val min = (animTime / 60f.rf) % 60f.rf
+                val hr = (animTime / 3600f.rf) % 12f.rf
+
+                val secAngle = sec * 6f.rf
+                val minAngle = min * 6f.rf
+                val hrAngle = hr * 30f.rf
+
+                drawLine(
+                    x0 = cx, y0 = cy,
+                    x1 = cx + 60f.rf * cos((hrAngle - 90f.rf) * 3.14159f.rf / 180f.rf),
+                    y1 = cy + 60f.rf * sin((hrAngle - 90f.rf) * 3.14159f.rf / 180f.rf),
+                    paint = createPaint().apply { color = Color.White; strokeWidth = 4f }
+                )
+                drawLine(
+                    x0 = cx, y0 = cy,
+                    x1 = cx + 75f.rf * cos((minAngle - 90f.rf) * 3.14159f.rf / 180f.rf),
+                    y1 = cy + 75f.rf * sin((minAngle - 90f.rf) * 3.14159f.rf / 180f.rf),
+                    paint = createPaint().apply { color = Color(0xFFE0E0E0); strokeWidth = 2f }
+                )
+                drawLine(
+                    x0 = cx, y0 = cy,
+                    x1 = cx + 80f.rf * cos((secAngle - 90f.rf) * 3.14159f.rf / 180f.rf),
+                    y1 = cy + 80f.rf * sin((secAngle - 90f.rf) * 3.14159f.rf / 180f.rf),
+                    paint = createPaint().apply { color = Color(0xFFE94560); strokeWidth = 1f }
+                )
+
+                drawCircle(
+                    cx = cx, cy = cy, radius = 4f.rf,
+                    paint = createPaint().apply { color = Color(0xFFE94560) }
+                )
+            }
+            RemoteSpacer(modifier = RemoteModifier.height(12.rdp))
+            RemoteRow {
+                RemoteText(
+                    text = "Powered by RemoteCompose",
+                    color = Color(0xFF888888).rc,
+                    fontSize = 10f.rf,
+                )
+            }
+        }
+    }
+}
+```
+
+### 13.7 方式三：粒子效果 Widget
+
+**widget/base/ParticleWidget.kt**：
+
+```kotlin
+package com.example.widgetdemo.widget.base
+
+import android.appwidget.AppWidgetManager
+import android.content.Context
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.compose.runtime.Composable
+import androidx.compose.remote.creation.compose.RemoteComposable
+import androidx.compose.remote.creation.compose.RemoteModifier
+import androidx.compose.remote.creation.compose.RemoteColor
+import androidx.compose.remote.creation.compose.RemoteAlignment
+import androidx.compose.remote.creation.compose.RemoteBox
+import androidx.compose.remote.creation.compose.RemoteText
+import androidx.compose.remote.creation.compose.RemoteCanvas
+import androidx.compose.remote.creation.compose.RemoteDp
+import androidx.compose.remote.creation.compose.RemoteColumn
+import androidx.compose.remote.creation.compose.RemoteSpacer
+import androidx.compose.remote.creation.compose.captureSingleRemoteDocument
+import androidx.compose.remote.creation.compose.layout.RemoteSpacer
+import androidx.compose.remote.creation.compose.widgets.RemoteComposeWidget
+import androidx.compose.remote.creation.profile.RcPlatformProfiles
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import android.widget.RemoteViews
+
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+class ParticleWidget : RemoteComposeWidget(useCompose = true) {
+
+    @Composable
+    override fun Content(context: Context, widgetId: Int) {
+        ParticleWidgetContent()
+    }
+}
+
+@Composable
+@RemoteComposable
+fun ParticleWidgetContent() {
+    RemoteBox(
+        modifier = RemoteModifier.fillMaxSize().background(RemoteColor(Color(0xFF0D1117))),
+    ) {
+        RemoteCanvas(modifier = RemoteModifier.fillMaxSize()) {
+            val px = rememberMutableRemoteFloat(0f)
+            val py = rememberMutableRemoteFloat(0f)
+            val dx = rememberMutableRemoteFloat(0f)
+            val dy = rememberMutableRemoteFloat(0f)
+            val life = rememberMutableRemoteFloat(0f)
+
+            val variables = arrayOf(px, py, dx, dy, life)
+            val psId = createParticles(
+                variables = variables,
+                initial = arrayOf(
+                    width / 2f.rf,
+                    height.rf,
+                    (rand() - 0.5f.rf) * 4f.rf,
+                    -(rand() * 5f.rf + 3f.rf),
+                    rand() * 3f.rf + 1f.rf,
+                ),
+                particleCount = 80,
+            )
+
+            val sparkPaint = createPaint().apply {
+                color = Color(0xFF58A6FF)
+            }
+
+            particlesLoop(
+                id = psId,
+                restartCondition = life lt 0f.rf,
+                updateEquations = arrayOf(
+                    px + dx * dt,
+                    py + dy * dt,
+                    dx,
+                    dy + 2f.rf * dt,
+                    life - dt,
+                ),
+            ) {
+                val alpha = life / 3f.rf
+                sparkPaint.setAlpha(alpha.toFloat())
+                drawCircle(
+                    cx = px.toFloat(), cy = py.toFloat(),
+                    radius = 3f,
+                    paint = sparkPaint,
+                )
+            }
+        }
+
+        RemoteColumn(
+            modifier = RemoteModifier.padding(RemoteDp(16.dp)),
+            horizontalAlignment = RemoteAlignment.CenterHorizontally,
+        ) {
+            RemoteSpacer(modifier = RemoteModifier.height(32.rdp))
+            RemoteText(
+                text = "Particle Widget",
+                color = Color.White.rc,
+                fontSize = 20f.rf,
+            )
+            RemoteText(
+                text = "Powered by RemoteCompose",
+                color = Color(0xFF888888).rc,
+                fontSize = 12f.rf,
+            )
+        }
+    }
+}
+```
+
+### 13.8 MainActivity
+
+**MainActivity.kt**：
+
+```kotlin
+package com.example.widgetdemo
+
+import android.appwidget.AppWidgetManager
+import android.content.Intent
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MaterialTheme {
+                Surface {
+                    val context = LocalContext.current
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text("Widget Demo", style = MaterialTheme.typography.headlineMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Add widgets to your home screen",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(modifier = Modifier.height(32.dp))
+                        Button(onClick = {
+                            val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_PICK)
+                            context.startActivity(intent)
+                        }) {
+                            Text("Add Widget")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 ```
 
 ---
 
-## 8. 项目目录结构
+## 14. 常见问题
 
-```
-compose/remote/
-├── AGENTS.md                          # 模块开发指南
-├── OWNERS                             # 代码所有者
-│
-├── remote-core/                       # 运行时核心 (Layer 1)
-│   ├── api/
-│   │   ├── current.txt                # 公共 API 定义
-│   │   └── restricted_current.txt     # 受限 API 定义
-│   ├── doc/
-│   │   ├── DATA_FLOW.md               # 数据流文档
-│   │   ├── EXPRESSION_ENGINE.md       # 表达式引擎文档
-│   │   ├── PROTOCOL_SPEC.md           # 协议规范
-│   │   └── REMOTE_COMPOSE_ARCHITECTURE.md  # 架构文档
-│   ├── src/main/java/androidx/compose/remote/core/
-│   │   ├── CoreDocument.java          # 文档元数据
-│   │   ├── RemoteContext.java         # 运行时上下文
-│   │   ├── WireBuffer.java            # 二进制缓冲区
-│   │   ├── Operations.java            # 操作码注册表
-│   │   ├── Operation.java             # 操作接口
-│   │   ├── PaintContext.java          # 绘制上下文
-│   │   ├── PaintOperation.java        # 绘制操作
-│   │   ├── RemoteClock.java           # 时钟抽象
-│   │   ├── LayoutCompute.java         # 布局计算
-│   │   ├── LayoutCallback.java        # 布局回调
-│   │   ├── Limits.java                # 常量限制
-│   │   ├── MatrixAccess.java          # 矩阵访问
-│   │   ├── RemotePathBase.java        # 路径基类
-│   │   ├── RcProfiles.java            # Profile 定义
-│   │   ├── SystemClock.java           # 系统时钟
-│   │   ├── SystemInfo.java            # 系统信息
-│   │   ├── TimeVariables.java         # 时间变量
-│   │   ├── TouchListener.java         # 触摸监听
-│   │   └── operations/                # 操作实现 (100+ 文件)
-│   │       ├── layout/                # 布局操作
-│   │       │   ├── managers/          # 布局管理器
-│   │       │   ├── modifiers/         # Modifier 操作
-│   │       │   └── animation/         # 动画操作
-│   │       ├── matrix/                # 矩阵操作
-│   │       ├── utilities/             # 工具类
-│   │       └── loom/                  # 模板/宏系统
-│   └── build.gradle
-│
-├── remote-core-testutils/             # 测试工具
-│   └── build.gradle
-│
-├── remote-creation-core/              # 创建核心 (Layer 2)
-│   ├── api/
-│   │   ├── current.txt
-│   │   └── restricted_current.txt
-│   └── build.gradle
-│
-├── remote-creation/                   # 创建 API (Layer 3)
-│   ├── api/
-│   │   ├── current.txt
-│   │   ├── res-current.txt
-│   │   └── restricted_current.txt
-│   ├── doc/
-│   │   ├── JAVA_PROCEDURAL_PATTERNS.md    # Java API 模式
-│   │   ├── KOTLIN_DSL_PATTERNS.md         # Kotlin DSL 模式
-│   │   └── MODIFIER_REGISTRY.md           # Modifier 注册指南
-│   │   └── guides/
-│   │       ├── COMPONENTS_GUIDE.md        # 组件开发指南
-│   │       ├── COMPOSE_COMPONENTS_GUIDE.md # Compose 集成指南
-│   │       ├── CREATION_DEMO_GUIDE.md     # 演示开发指南
-│   │       ├── DRAW_TEXT_ANCHORED_GUIDE.md # 锚定文本指南
-│   │       ├── LOOP_GUIDE.md              # 循环指南
-│   │       ├── PARTICLE_SYSTEM_GUIDE.md   # 粒子系统指南
-│   │       ├── PATH_EXPRESSION_GUIDE.md   # 路径表达式指南
-│   │       ├── PROCEDURAL_COMPONENTS_GUIDE.md # 过程式组件指南
-│   │       └── TOUCH_GUIDE.md             # 触摸指南
-│   ├── src/
-│   │   ├── androidDeviceTest/           # 设备测试
-│   │   └── androidMain/                 # Android 主代码
-│   │       ├── java/androidx/compose/remote/creation/
-│   │       │   ├── RemoteComposeWriter.java   # Java 过程式 API
-│   │       │   ├── RemoteComposeContext.kt    # Kotlin DSL 入口
-│   │       │   ├── RecordingModifier.java     # Modifier 记录器
-│   │       │   ├── RemoteModifier.kt          # 远程 Modifier
-│   │       │   ├── RcPaint.java               # 画笔
-│   │       │   ├── RcShader.java              # 着色器
-│   │       │   ├── RcTypes.kt                 # 远程类型
-│   │       │   ├── dsl/                       # DSL 定义
-│   │       │   │   ├── Modifier.kt            # Modifier DSL
-│   │       │   │   ├── RcScope.kt             # 作用域
-│   │       │   │   └── ...
-│   │       │   └── modifiers/                 # Modifier 实现
-│   │       └── res/                         # 资源文件
-│   └── build.gradle
-│
-├── remote-creation-compose/           # Compose 集成 (Layer 4)
-│   ├── api/
-│   │   ├── api_lint.ignore
-│   │   ├── current.txt
-│   │   ├── res-current.txt
-│   │   └── restricted_current.txt
-│   ├── samples/                       # 示例代码
-│   ├── src/
-│   │   └── androidTest/               # 测试
-│   ├── GEMINI.md                      # Gemini AI 指南
-│   └── build.gradle
-│
-├── integration-tests/                 # 集成测试
-│   ├── benchmark/                     # 基准测试
-│   ├── demos/                         # 演示应用
-│   ├── macrobenchmark/                # 宏基准测试
-│   ├── macrobenchmark-target/         # 基准测试目标
-│   └── player-view-demos/             # PlayerView 演示
-│       └── src/main/res/raw/          # .rc 演示文件 (100+)
-│
-└── Documentation/                     # 文档
-    ├── images/                        # 截图/示意图
-    ├── parts/                         # 组件文档
-    │   ├── animation_spec.md
-    │   ├── box.md
-    │   ├── canvas_layout.md
-    │   ├── column.md
-    │   ├── draw_rect.md
-    │   ├── draw_text.md
-    │   ├── modifier_background.md
-    │   ├── modifier_padding.md
-    │   ├── row.md
-    │   └── ... (50+ 文档)
-    ├── RemoteComposeWireFormat.md.html
-    └── TESTING_GUIDE.md
-```
+### Q1: RemoteCompose Widget 在旧设备上会怎样？
 
----
+**A**: 使用 Glance API 构建的 Widget 会自动向后兼容。在 API 35+ 设备上，Glance 自动使用 RemoteCompose 后端渲染；在旧设备上，自动降级为传统 RemoteViews 渲染。直接使用 `@RemoteComposable` 或 `RemoteComposeWidget` 的 Widget 仅在 API 35+ 可用。
 
-> 本文档基于 `compose/remote` 模块源码全面分析生成，涵盖模块架构、Wire Format 协议、渲染流水线、布局系统、表达式引擎、创建 API 和项目结构等核心内容。
+### Q2: 什么时候用 Glance API，什么时候用 RemoteCompose API？
+
+**A**:
+- **需要向后兼容** → 使用 Glance API
+- **需要动画/粒子/高级交互** → 使用 RemoteCompose API（仅 API 35+）
+- **两者兼顾** → 使用 Glance API，在 API 35+ 上自动获得 RemoteCompose 增强
+
+### Q3: Widget 更新频率有限制吗？
+
+**A**: 系统限制 `updatePeriodMillis` 最小为 30 分钟。对于实时数据，建议使用 `WorkManager` 或 `AlarmManager` 触发更新，或使用 `GlanceAppWidget.update()` 手动触发。
+
+### Q4: 如何调试 Widget？
+
+**A**:
+1. 使用 `GlanceAppWidgetUnitTest` 进行单元测试
+2. 使用 Android Studio 的 Widget Preview 功能
+3. 使用 `adb shell am broadcast -a android.appwidget.action.APPWIDGET_UPDATE` 手动触发更新
+4. 查看 Logcat 中 `GlanceAppWidget` 标签的日志
+
+### Q5: 粒子效果会影响电池吗？
+
+**A**: 不会。RemoteCompose 的粒子系统在 Player 端（系统进程）运行，使用高效的 RPN 表达式引擎，无需唤醒应用进程。系统会自动管理渲染频率以节省电量。
+
+### Q6: 如何处理 Widget 的点击事件？
+
+**A**:
+- **Glance**: 使用 `actionRunCallback<T>()`、`actionStartActivity()`、`actionSendBroadcast()` 等
+- **RemoteCompose**: 使用 `clickable(ValueChange(...))` 修改状态变量，或使用 `onClick { }` 回调（Widget 专用）
+- 点击事件通过 `PendingIntent` 和广播机制实现，因为 Widget 运行在系统进程中
+
+### Q7: RemoteCompose 的 Profile 是什么？
+
+**A**: Profile 定义了不同平台支持的操作码子集：
+- `WIDGETS_V7`：Android 16+ Widget 支持的完整操作集
+- `WIDGETS_V6`：早期 Widget 操作集
+- `ANDROIDX`：AndroidX Player 支持的完整操作集（Activity 中使用）
+- `WEAR_WIDGETS`：Wear OS Widget 的操作子集
+
+选择正确的 Profile 确保文档在目标平台可用。

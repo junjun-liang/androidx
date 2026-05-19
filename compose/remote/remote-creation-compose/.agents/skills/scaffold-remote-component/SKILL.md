@@ -1,32 +1,32 @@
 ---
 name: Scaffold Remote Component
-description: Scaffold a new RemoteCompose remote creation component with test, sample, and preview
+description: 为新的 RemoteCompose 组件搭建脚手架，包含测试、示例和预览
 ---
 
-# Scaffold Remote Component
+# 搭建 Remote 组件脚手架
 
-This skill scaffolds a new RemoteCompose Creation component/modifier, automatically generating the required boilerplate for the component implementation, sample, preview, and screenshot tests.
+本技能为新的 RemoteCompose Creation 组件/修饰器搭建脚手架，自动生成组件实现、示例、预览和截图测试所需的样板代码。
 
-Since this skill is located within `remote-creation-compose`, it is specifically scoped to generate components only for this module.
+由于本技能位于 `remote-creation-compose` 模块内，因此专门用于为该模块生成组件。
 
-### Required Input
-Ensure you know the name of the new component (e.g., `RemoteBox`). If the user hasn't specified one, ask for it before proceeding. Let this be `$COMPONENT_NAME`.
+### 所需输入
+确保你知道新组件的名称（例如 `RemoteBox`）。如果用户未指定，请在继续之前询问。将其记为 `$COMPONENT_NAME`。
 
-**Key Architectural Rules to Remember**:
-* **Descriptive Naming**: Names of preview or test variants must describe what they *have* (e.g. `${COMPONENT_NAME}WithColors`) rather than negating what they omit.
-* **Separate Composables**: Distinct preview states must be broken out into separated top-level `@Composable` functions.
-* **Component Testing**: Tests must directly invoke the explicit `*Preview` composables or state composables defined in the preview file.
-* **onClick Parameters**: Use `Action.Empty` to mock any dummy `onClick` actions in samples, previews, and tests.
+**需要记住的关键架构规则**：
+* **描述性命名**：预览或测试变体的名称必须描述它们*包含*什么（例如 `${COMPONENT_NAME}WithColors`），而不是否定它们省略的内容。
+* **独立的 Composable**：不同的预览状态必须分解为独立的顶层 `@Composable` 函数。
+* **组件测试**：测试必须直接调用预览文件中定义的显式 `*Preview` composables 或状态 composables。
+* **onClick 参数**：在示例、预览和测试中，使用 `Action.Empty` 来模拟任何虚拟的 `onClick` 动作。
 
-### Step 1: Create Component Implementation
-Create the file relative to the root of the remote-creation-compose project, depending on whether it is a layout (e.g. `RemoteBox`, `RemoteColumn`) or a modifier (e.g. `AlphaModifier`).
+### 步骤 1：创建组件实现
+根据组件是布局（如 `RemoteBox`、`RemoteColumn`）还是修饰器（如 `AlphaModifier`），在 remote-creation-compose 项目根目录下创建文件：
 `src/main/java/androidx/compose/remote/creation/compose/layout/$COMPONENT_NAME.kt`
-OR
+或
 `src/main/java/androidx/compose/remote/creation/compose/modifier/$COMPONENT_NAME.kt`
 
-Use this base template:
+使用此基础模板：
 ```kotlin
-package androidx.compose.remote.creation.compose.layout // OR .modifier
+package androidx.compose.remote.creation.compose.layout // 或 .modifier
 
 import androidx.compose.runtime.Composable
 import androidx.compose.remote.creation.compose.modifier.RemoteModifier
@@ -34,19 +34,19 @@ import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 @Composable
 public fun $COMPONENT_NAME(
     modifier: RemoteModifier = RemoteModifier,
-    // Add other relevant parameters here
+    // 在此处添加其他相关参数
 ) {
-    // TODO: Implement the component
+    // TODO: 实现组件
 }
 ```
 
-Remember to link the Sample composable in the component's KDoc using the `@sample` tag, once the sample is created in Step 2.
+记得在步骤 2 创建示例后，使用 `@sample` 标签将示例 composable 链接到组件的 KDoc 中。
 
-### Step 2: Create the Sample
-Create the sample file relative to the root of the remote-creation-compose project.
+### 步骤 2：创建示例
+在 remote-creation-compose 项目根目录下创建示例文件：
 `samples/src/main/java/androidx/compose/remote/creation/compose/samples/${COMPONENT_NAME}Sample.kt`
 
-Use this base template:
+使用此基础模板：
 ```kotlin
 package androidx.compose.remote.creation.compose.samples
 
@@ -60,17 +60,17 @@ import androidx.compose.ui.tooling.preview.PreviewWrapper
 @PreviewWrapper(RemoteComponentPreviewWrapper::class)
 @Composable
 fun ${COMPONENT_NAME}Sample() {
-    // TODO: Implement the sample function
+    // TODO: 实现示例函数
 }
 ```
 
-Ensure this sample is linked using `@sample` in the KDocs of the corresponding component/modifier created in Step 1.
+确保使用 `@sample` 在步骤 1 创建的对应组件/修饰器的 KDoc 中链接此示例。
 
-### Step 3: Create the Preview
-Create the preview file relative to the root of the remote-creation-compose project:
+### 步骤 3：创建预览
+在 remote-creation-compose 项目根目录下创建预览文件：
 `samples/src/main/java/androidx/compose/remote/creation/compose/previews/${COMPONENT_NAME}Preview.kt`
 
-Use this base template, separating out components into clear descriptive variations describing what they contain:
+使用此基础模板，将组件分离为清晰的描述性变体，描述它们包含的内容：
 
 ```kotlin
 package androidx.compose.remote.creation.compose.previews
@@ -84,19 +84,19 @@ import androidx.compose.remote.creation.compose.previews.utils.RemoteComponentPr
 @PreviewWrapper(RemoteComponentPreviewWrapper::class)
 @Composable
 fun ${COMPONENT_NAME}DefaultPreview() {
-    // TODO: Apply default preview implementation
+    // TODO: 应用默认预览实现
 }
 ```
 
-### Step 4: Create the Screenshot Test
-Create the test file relative to the root of the remote-creation-compose project:
+### 步骤 4：创建截图测试
+在 remote-creation-compose 项目根目录下创建测试文件，根据组件是布局还是修饰器：
 `src/androidTest/java/androidx/compose/remote/creation/compose/layout/${COMPONENT_NAME}ScreenshotTest.kt`
-OR
+或
 `src/androidTest/java/androidx/compose/remote/creation/compose/modifier/${COMPONENT_NAME}ScreenshotTest.kt`
 
-Use this boilerplate, ensuring a separate `@Test` method exists for each explicit preview variation you generated:
+使用此样板代码，确保为你生成的每个显式预览变体都存在单独的 `@Test` 方法：
 ```kotlin
-package androidx.compose.remote.creation.compose.layout // OR .modifier
+package androidx.compose.remote.creation.compose.layout // 或 .modifier
 
 import androidx.compose.remote.creation.compose.layout.previews.${COMPONENT_NAME}Default
 import androidx.compose.remote.creation.compose.modifier.samples.SCREENSHOT_GOLDEN_DIRECTORY
@@ -128,15 +128,15 @@ class ${COMPONENT_NAME}ScreenshotTest {
 }
 ```
 
-### Step 5: Create Screenshot Test for Sample
-Create the test file relative to the root of the remote-creation-compose project, depending on whether it is a layout or a modifier:
+### 步骤 5：创建示例的截图测试
+在 remote-creation-compose 项目根目录下创建测试文件，根据组件是布局还是修饰器：
 `src/androidTest/java/androidx/compose/remote/creation/compose/layout/samples/${COMPONENT_NAME}SampleScreenshotTest.kt`
-OR
+或
 `src/androidTest/java/androidx/compose/remote/creation/compose/modifier/samples/${COMPONENT_NAME}SampleScreenshotTest.kt`
 
-Use this boilerplate for the test:
+使用此样板代码进行测试：
 ```kotlin
-package androidx.compose.remote.creation.compose.layout.samples // OR .modifier.samples
+package androidx.compose.remote.creation.compose.layout.samples // 或 .modifier.samples
 
 import androidx.compose.remote.creation.compose.SCREENSHOT_GOLDEN_DIRECTORY
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment.Companion.Center
@@ -176,5 +176,5 @@ class ${COMPONENT_NAME}SampleScreenshotTest {
 }
 ```
 
-### Step 6: Wrap up
-Notify the user that the component boilerplate has been generated and ask if they'd like to implement specific behavior for the $COMPONENT_NAME component now.
+### 步骤 6：完成
+通知用户组件样板代码已生成，并询问他们是否现在想要为 $COMPONENT_NAME 组件实现具体行为。

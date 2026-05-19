@@ -1,46 +1,46 @@
 ---
 name: build_screenshot_tests
-description: A skill for building instrumented screenshot tests in Remote Compose using RemoteScreenshotTestRule.
+description: 在 Remote Compose 中使用 RemoteScreenshotTestRule 构建仪器化截图测试的技能
 ---
 
-# Building Screenshot Tests using RemoteScreenshotTestRule
+# 使用 RemoteScreenshotTestRule 构建截图测试
 
 > [!IMPORTANT]
-> **AI INSTRUCTION:** Do not assume you should use `RemoteScreenshotTestRule` for all tests. If the user asks you to write a screenshot test, you MUST first explicitly ask them: "Would you like me to use the `RemoteScreenshotTestRule` for this test?" Proceed with using this skill only if they confirm.
+> **AI 指示：** 不要假设所有测试都应该使用 `RemoteScreenshotTestRule`。如果用户要求你编写截图测试，你**必须**首先明确询问他们："你想让我使用 `RemoteScreenshotTestRule` 来编写这个测试吗？"只有在他们确认后才使用此技能。
 
-This skill provides guidelines for building screenshot tests in the `@compose/remote/remote-creation-compose` project.
+本技能为 `@compose/remote/remote-creation-compose` 项目中的截图测试提供指导。
 
-## Purpose
+## 目的
 
-`RemoteScreenshotTestRule` is a JUnit rule that allows taking screenshots of Remote Compose components. It handles:
-1.  Capturing the remote document.
-2.  Rendering it using `RemoteDocumentPlayer`.
-3.  Verifying the rendered image against a "golden" screenshot.
+`RemoteScreenshotTestRule` 是一个 JUnit 规则，允许对 Remote Compose 组件进行截图。它处理：
+1. 捕获远程文档。
+2. 使用 `RemoteDocumentPlayer` 渲染它。
+3. 将渲染的图像与"金标"（golden）截图进行验证。
 
-## Setup
+## 设置
 
-1.  **Test Class Annotations**:
-    Annotate the test class with `@MediumTest`, `@SdkSuppress(minSdkVersion = 35, maxSdkVersion = 35)`, and `@RunWith(AndroidJUnit4::class)`.
+1. **测试类注解**：
+   使用 `@MediumTest`、`@SdkSuppress(minSdkVersion = 35, maxSdkVersion = 35)` 和 `@RunWith(AndroidJUnit4::class)` 注解测试类。
 
-2.  **Add the Rule**:
-    Define the rule inside the test class.
-    ```kotlin
-    @get:Rule
-    val composeTestRule: RemoteScreenshotTestRule by lazy {
-        RemoteScreenshotTestRule(
-            moduleDirectory = SCREENSHOT_GOLDEN_DIRECTORY,
-            context = ApplicationProvider.getApplicationContext(),
-            matcher = MSSIMMatcher(threshold = 0.999),
-        )
-    }
-    ```
-    *Note: `SCREENSHOT_GOLDEN_DIRECTORY` is usually defined in the module, e.g., `androidx.compose.remote.creation.compose.SCREENSHOT_GOLDEN_DIRECTORY`.*
+2. **添加规则**：
+   在测试类内部定义规则。
+   ```kotlin
+   @get:Rule
+   val composeTestRule: RemoteScreenshotTestRule by lazy {
+       RemoteScreenshotTestRule(
+           moduleDirectory = SCREENSHOT_GOLDEN_DIRECTORY,
+           context = ApplicationProvider.getApplicationContext(),
+           matcher = MSSIMMatcher(threshold = 0.999),
+       )
+   }
+   ```
+   *注意：`SCREENSHOT_GOLDEN_DIRECTORY` 通常在模块中定义，例如 `androidx.compose.remote.creation.compose.SCREENSHOT_GOLDEN_DIRECTORY`。*
 
-## How to use `RemoteScreenshotTestRule`
+## 如何使用 `RemoteScreenshotTestRule`
 
-### 1. Basic Usage (Direct Testing)
+### 1. 基本用法（直接测试）
 
-Use `runScreenshotTest` and provide a lambda with the Remote Composable content you want to test.
+使用 `runScreenshotTest` 并提供一个包含要测试的 Remote Composable 内容的 lambda。
 
 ```kotlin
 @Test
@@ -53,9 +53,9 @@ fun simpleTest() {
 }
 ```
 
-### 2. Overriding Configuration
+### 2. 覆盖配置
 
-You can override profile, layout direction, or offer outer content if needed.
+如果需要，可以覆盖 profile、布局方向或提供外部内容。
 
 ```kotlin
 @Test
@@ -79,13 +79,13 @@ fun alignByBaseline() {
 }
 ```
 
-### 3. Grid Testing (Optional)
+### 3. 网格测试（可选）
 
-For testing multiple variations efficiently, you can combine this rule with `GridScreenshotUI`.
-Refer to the `build_grid_screenshot_tests` skill for detailed instructions on using the grid utility.
+为了高效测试多个变体，可以将此规则与 `GridScreenshotUI` 结合使用。
+有关使用网格工具的详细说明，请参阅 `build_grid_screenshot_tests` 技能。
 
-## Best Practices
+## 最佳实践
 
--   **Thresholds**: Use `MSSIMMatcher(threshold = 0.999)` for high-precision matching.
--   **Golden Directory**: Ensure `moduleDirectory` points to the correct golden assets folder.
--   **Remote Scope**: Inside the `runScreenshotTest` lambda, you are in a `@RemoteComposable @Composable` scope. Make sure to use `RemoteModifier` and Remote components (e.g. `RemoteBox`, `RemoteText`).
+- **阈值**：使用 `MSSIMMatcher(threshold = 0.999)` 进行高精度匹配。
+- **金标目录**：确保 `moduleDirectory` 指向正确的金标资源文件夹。
+- **Remote 范围**：在 `runScreenshotTest` lambda 内部，你处于 `@RemoteComposable @Composable` 范围。确保使用 `RemoteModifier` 和 Remote 组件（例如 `RemoteBox`、`RemoteText`）。

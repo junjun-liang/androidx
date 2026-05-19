@@ -1,26 +1,26 @@
 ---
 name: build_grid_screenshot_tests
-description: A skill for building instrumented tests in Remote Compose using GridScreenshotUI.
+description: 在 Remote Compose 中使用 GridScreenshotUI 构建仪器化测试的技能
 ---
 
-# Building Instrumented Tests using GridScreenshotUI
+# 使用 GridScreenshotUI 构建仪器化测试
 
 > [!IMPORTANT]
-> **AI INSTRUCTION:** Do not assume you should use `GridScreenshotUI` for all tests in this directory. If the user asks you to write a screenshot test, you MUST first explicitly ask them: "Would you like me to use the `GridScreenshotUI` utility for this test?" Proceed with using this skill only if they confirm.
+> **AI 指示：** 不要假设此目录中的所有测试都应该使用 `GridScreenshotUI`。如果用户要求你编写截图测试，你**必须**首先明确询问他们："你想让我使用 `GridScreenshotUI` 工具来编写这个测试吗？"只有在他们确认后才使用此技能。
 
-This skill provides guidelines for building screenshot tests using `GridScreenshotUI` in the `@compose/remote/remote-creation-compose` project.
+本技能为 `@compose/remote/remote-creation-compose` 项目中使用 `GridScreenshotUI` 构建截图测试提供指导。
 
-## Purpose
+## 目的
 
-`GridScreenshotUI` is a utility class designed to lay out multiple small remote UI components in a grid. This is particularly useful for screenshot testing as it allows you to capture many variations of a component (e.g., different alignments, modifiers, or arrangements) in a single screenshot, making tests more efficient and easier to compare visually.
+`GridScreenshotUI` 是一个工具类，设计用于将多个小型 Remote UI 组件以网格形式布局。这在截图测试中特别有用，因为它允许你在单个截图中捕获组件的许多变体（例如不同的对齐方式、修饰器或排列方式），使测试更高效且更易于视觉比较。
 
-## How to use `GridScreenshotUI`
+## 如何使用 `GridScreenshotUI`
 
-1. **Test Class Setup**:
-   Create a test class annotated with `@MediumTest`, `@SdkSuppress(minSdkVersion = 35, maxSdkVersion = 35)`, and `@RunWith(AndroidJUnit4::class)`.
+1. **测试类设置**：
+   创建一个测试类，使用 `@MediumTest`、`@SdkSuppress(minSdkVersion = 35, maxSdkVersion = 35)` 和 `@RunWith(AndroidJUnit4::class)` 注解。
 
-2. **Add the Screenshot Rule**:
-   Define a `RemoteScreenshotTestRule` explicitly specifying the module directory and matcher.
+2. **添加截图规则**：
+   定义一个 `RemoteScreenshotTestRule`，明确指定模块目录和匹配器。
    ```kotlin
    @get:Rule
    val composeTestRule: RemoteScreenshotTestRule by lazy {
@@ -32,18 +32,18 @@ This skill provides guidelines for building screenshot tests using `GridScreensh
    }
    ```
 
-3. **Instantiate GridScreenshotUI**:
-   Create an instance of `GridScreenshotUI` in your test class.
+3. **实例化 GridScreenshotUI**：
+   在测试类中创建 `GridScreenshotUI` 的实例。
    ```kotlin
    private val gridScreenshotUI = GridScreenshotUI()
    ```
 
-4. **Define your UI variations**:
-   Create a method or variable that provides a list of `Pair<String, @RemoteComposable @Composable () -> Unit>`. The string is the label for the variation, and the lambda is the actual Compose UI content.
-   You can use the `.toInput()` extension functions defined in `GridScreenshotUI.Companion` to easily convert a list of composables into the required pair format if you don't want to specify labels manually.
+4. **定义 UI 变体**：
+   创建一个方法或变量，提供 `Pair<String, @RemoteComposable @Composable () -> Unit>` 的列表。字符串是变体的标签，lambda 是实际的 Compose UI 内容。
+   如果你不想手动指定标签，可以使用 `GridScreenshotUI.Companion` 中定义的 `.toInput()` 扩展函数，轻松将 composable 列表转换为所需的 pair 格式。
 
-5. **Write the Test**:
-   Use `composeTestRule.runScreenshotTest` and call `gridScreenshotUI.GridContent(...)` with your list of variations.
+5. **编写测试**：
+   使用 `composeTestRule.runScreenshotTest` 并调用 `gridScreenshotUI.GridContent(...)` 传入你的变体列表。
    ```kotlin
    @Test
    fun exampleGridTest() =
@@ -52,16 +52,16 @@ This skill provides guidelines for building screenshot tests using `GridScreensh
        }
    ```
 
-## Best Practices
-- **Reuse Dimensions**: Use `GridScreenshotUI.Companion.DefaultContainerSize` to maintain consistent container dimensions across tests.
-- **RTL Testing**: You can easily test RTL (Right-to-Left) layouts by passing `layoutDirection = LayoutDirection.Rtl` to `GridContent`.
+## 最佳实践
+- **重用尺寸**：使用 `GridScreenshotUI.Companion.DefaultContainerSize` 在不同测试中保持一致的容器尺寸。
+- **RTL 测试**：你可以通过传递 `layoutDirection = LayoutDirection.Rtl` 给 `GridContent` 来轻松测试 RTL（从右到左）布局。
   ```kotlin
   gridScreenshotUI.GridContent(
       getLayoutAlignmentUIs(),
       layoutDirection = LayoutDirection.Rtl,
   )
   ```
-- **Helper methods**: Create builder methods to generate the list of `Pair` items if you have a combinatorial explosion of parameters (like trying out all combinations of `Arrangements` and `Alignments` through `sequence`).
+- **辅助方法**：如果你有参数的组合爆炸（例如通过 `sequence` 尝试所有 `Arrangements` 和 `Alignments` 的组合），创建构建器方法来生成 `Pair` 项列表。
   ```kotlin
   private fun getLayoutAlignmentUIs(): List<Pair<String, @RemoteComposable @Composable () -> Unit>> =
       sequence {
@@ -75,7 +75,7 @@ This skill provides guidelines for building screenshot tests using `GridScreensh
                                   horizontalArrangement = arrangement,
                                   verticalAlignment = alignment,
                               ) {
-                                  // Your content here
+                                  // 你的内容在这里
                               }
                           }
                   )

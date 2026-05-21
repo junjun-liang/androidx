@@ -31,6 +31,22 @@ object WeatherWidgetSample {
     
     /**
      * 创建天气微件的 JSON 规格
+     * 
+     * metadata 支持以下格式：
+     * 1. 简单字符串：直接传递字符串值
+     *    示例："metadata": "open_detail"
+     * 
+     * 2. Key-Value 格式（推荐）：使用 | 分隔多个键值对
+     *    示例："metadata": "action:android.intent.action.VIEW|data:weather://detail"
+     * 
+     * 3. 纯 Action 格式：只指定 action
+     *    示例："metadata": "action:com.example.REFRESH"
+     * 
+     * 4. 纯 Data 格式：只指定 data URI
+     *    示例："metadata": "data:weather://refresh"
+     * 
+     * 5. 多参数格式：支持多个自定义参数
+     *    示例："metadata": "action:VIEW|data:weather://detail|extra:temperature|value:24"
      */
     fun createWeatherWidgetJson(): String {
         return """
@@ -134,18 +150,40 @@ object WeatherWidgetSample {
     /**
      * 解析 metadata 中的 action 和 data
      * 
-     * metadata 格式："action:android.intent.action.VIEW|data:weather://detail"
+     * metadata 格式支持：
+     * 1. Key-Value 格式："action:android.intent.action.VIEW|data:weather://detail"
+     * 2. 简单字符串："open_detail"
+     * 3. 纯 Action："action:com.example.REFRESH"
+     * 4. 纯 Data："data:weather://refresh"
+     * 5. 多参数："action:VIEW|data:detail|extra:temperature|value:24"
+     * 
+     * @param metadata metadata 字符串
+     * @return Pair<action, data>，可能为 null
      */
     private fun parseMetadata(metadata: String): Pair<String?, String?> {
         var action: String? = null
         var data: String? = null
         
-        metadata.split("|").forEach { part ->
-            val (key, value) = part.split(":", limit = 2)
-            when (key.trim()) {
-                "action" -> action = value.trim()
-                "data" -> data = value.trim()
+        // 尝试解析 Key-Value 格式
+        if (metadata.contains(":")) {
+            metadata.split("|").forEach { part ->
+                val parts = part.split(":", limit = 2)
+                if (parts.size == 2) {
+                    val key = parts[0].trim()
+                    val value = parts[1].trim()
+                    when (key) {
+                        "action" -> action = value
+                        "data" -> data = value
+                        // 可以扩展支持其他 key
+                        "extra", "value" -> {
+                            // 自定义参数，可以在回调中处理
+                        }
+                    }
+                }
             }
+        } else {
+            // 简单字符串格式，直接作为 action 处理
+            action = metadata
         }
         
         return Pair(action, data)
@@ -185,6 +223,35 @@ object WeatherWidgetSample {
                     // 启动 Activity
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
+                }
+                2 -> {
+                    // 示例：处理刷新动作
+                    val (action, _) = parseMetadata(metadata)
+                    when (action) {
+                        "com.example.REFRESH" -> {
+                            // 刷新天气数据
+                            val refreshIntent = Intent("com.example.REFRESH_WEATHER")
+                            context.sendBroadcast(refreshIntent)
+                        }
+                    }
+                }
+                else -> {
+                    // 默认处理：简单字符串 metadata
+                    val (action, dataUri) = parseMetadata(metadata)
+                    if (action != null && !action.contains(":")) {
+                        // 简单字符串 action
+                        when (action) {
+                            "open_detail" -> {
+                                val intent = Intent("android.intent.action.VIEW").apply {
+                                    data = Uri.parse("weather://detail")
+                                }
+                                context.startActivity(intent)
+                            }
+                            "refresh" -> {
+                                context.sendBroadcast(Intent("com.example.REFRESH"))
+                            }
+                        }
+                    }
                 }
             }
         }

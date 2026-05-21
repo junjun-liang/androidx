@@ -14,20 +14,23 @@
  * limitations under the License.
  */
 
-package androidx.compose.genwidget.compiler
+package com.yingjie.androidaiagent.data.widget.compiler
 
+import android.annotation.SuppressLint
 import androidx.compose.remote.core.Operations
 import androidx.compose.remote.core.WireBuffer
-import androidx.compose.genwidget.model.*
 import com.google.gson.Gson
+import com.yingjie.androidaiagent.data.widget.model.*
+import com.yingjie.androidaiagent.data.widget.model.WidgetSpec
 
 /**
  * Widget 编译器 - 将 WidgetSpec 编译为 Wire Format 二进制数据
  */
+@SuppressLint("RestrictedApi")
 object WidgetCompiler {
-    
+
     private val gson = Gson()
-    
+
     /**
      * 从 JSON 字符串编译为 Wire Format
      */
@@ -35,26 +38,26 @@ object WidgetCompiler {
         val spec = gson.fromJson(jsonString, WidgetSpec::class.java)
         return compile(spec)
     }
-    
+
     /**
      * 从 WidgetSpec 编译为 Wire Format
      */
     fun compile(spec: WidgetSpec): ByteArray {
         val buffer = WireBuffer()
         val widget = spec.widget
-        
+
         // 1. 写入头部信息
         writeHeader(buffer, widget)
-        
+
         // 2. 注册资源（文本和位图）
         writeResources(buffer, widget.resources)
-        
+
         // 3. 写入组件树
         writeComponentTree(buffer, widget.components)
-        
-        return buffer.getBuffer()
+
+        return buffer.buffer
     }
-    
+
     /**
      * 写入头部信息
      */
@@ -66,7 +69,7 @@ object WidgetCompiler {
         buffer.writeInt(widget.density)
         buffer.writeLong(getProfileCode(widget.profile))
     }
-    
+
     /**
      * 获取 Profile 代码
      */
@@ -77,7 +80,7 @@ object WidgetCompiler {
             else -> 0x0000000000000001L
         }
     }
-    
+
     /**
      * 注册资源
      */
@@ -91,7 +94,7 @@ object WidgetCompiler {
             buffer.writeInt(textBytes.size)
             textBytes.forEach { b -> buffer.writeByte(b.toInt()) }
         }
-        
+
         // 注册位图资源
         resources.bitmaps.forEach { bitmap ->
             buffer.writeByte(Operations.DATA_BITMAP)
@@ -103,7 +106,7 @@ object WidgetCompiler {
             buffer.writeInt(0) // 像素数据大小
         }
     }
-    
+
     /**
      * 写入组件树
      */
@@ -112,7 +115,7 @@ object WidgetCompiler {
             writeComponent(buffer, component)
         }
     }
-    
+
     /**
      * 写入单个组件
      */
@@ -127,7 +130,7 @@ object WidgetCompiler {
             else -> throw IllegalArgumentException("Unknown component type: ${component.type}")
         }
     }
-    
+
     /**
      * 写入 Column 组件
      */
@@ -135,18 +138,18 @@ object WidgetCompiler {
         buffer.writeByte(Operations.COMPONENT_START)
         buffer.writeInt(component.id)
         buffer.writeInt(LayoutType.COLUMN)
-        
+
         // 写入修饰器
         component.modifier?.let { writeModifier(buffer, it) }
-        
+
         // 写入子组件
         component.children?.forEach { child ->
             writeComponent(buffer, child)
         }
-        
+
         buffer.writeByte(Operations.CONTAINER_END)
     }
-    
+
     /**
      * 写入 Row 组件
      */
@@ -154,16 +157,16 @@ object WidgetCompiler {
         buffer.writeByte(Operations.COMPONENT_START)
         buffer.writeInt(component.id)
         buffer.writeInt(LayoutType.ROW)
-        
+
         component.modifier?.let { writeModifier(buffer, it) }
-        
+
         component.children?.forEach { child ->
             writeComponent(buffer, child)
         }
-        
+
         buffer.writeByte(Operations.CONTAINER_END)
     }
-    
+
     /**
      * 写入 Box 组件
      */
@@ -171,23 +174,23 @@ object WidgetCompiler {
         buffer.writeByte(Operations.COMPONENT_START)
         buffer.writeInt(component.id)
         buffer.writeInt(LayoutType.BOX)
-        
+
         component.modifier?.let { writeModifier(buffer, it) }
-        
+
         component.children?.forEach { child ->
             writeComponent(buffer, child)
         }
-        
+
         buffer.writeByte(Operations.CONTAINER_END)
     }
-    
+
     /**
      * 写入 Text 组件
      */
     private fun writeText(buffer: WireBuffer, component: Component) {
         buffer.writeByte(Operations.DRAW_TEXT_RUN)
         buffer.writeInt(component.textResourceId ?: throw IllegalArgumentException("Text needs textResourceId"))
-        
+
         // 写入文本样式
         component.style?.let { style ->
             buffer.writeFloat(style.fontSize)
@@ -201,20 +204,20 @@ object WidgetCompiler {
             buffer.writeInt(-0x1000000) // 黑色
             buffer.writeInt(0) // LEFT
         }
-        
+
         // ⭐ 写入点击交互（如果有）
         component.clickAction?.let { clickAction ->
             writeClickModifier(buffer, clickAction)
         }
     }
-    
+
     /**
      * 写入 Image 组件
      */
     private fun writeImage(buffer: WireBuffer, component: Component) {
         buffer.writeByte(Operations.DRAW_BITMAP)
         buffer.writeInt(component.bitmapResourceId ?: throw IllegalArgumentException("Image needs bitmapResourceId"))
-        
+
         component.size?.let { size ->
             buffer.writeInt(size.width)
             buffer.writeInt(size.height)
@@ -223,39 +226,39 @@ object WidgetCompiler {
             buffer.writeInt(100)
         }
     }
-    
+
     /**
      * 写入 Canvas 组件
      */
     private fun writeCanvas(buffer: WireBuffer, component: Component) {
         buffer.writeByte(Operations.LAYOUT_CANVAS)
         buffer.writeInt(component.id)
-        
+
         component.modifier?.let { writeModifier(buffer, it) }
-        
+
         // Canvas 内部操作（如果有）
         // 这里可以根据需要扩展
-        
+
         // Canvas 结束由 CONTAINER_END 处理
     }
-    
+
     /**
      * 写入修饰器
      */
     private fun writeModifier(buffer: WireBuffer, modifier: Modifier) {
         var modifierFlags = 0
-        
+
         // 填充标志
         if (modifier.fillMaxSize == true) modifierFlags = modifierFlags or 0x01
         if (modifier.fillMaxWidth == true) modifierFlags = modifierFlags or 0x02
         if (modifier.fillMaxHeight == true) modifierFlags = modifierFlags or 0x04
-        
+
         buffer.writeInt(modifierFlags)
-        
+
         // 尺寸
         buffer.writeInt(modifier.width ?: -1)
         buffer.writeInt(modifier.height ?: -1)
-        
+
         // 内边距
         modifier.padding?.let { padding ->
             buffer.writeInt(padding.left)
@@ -268,14 +271,14 @@ object WidgetCompiler {
             buffer.writeInt(0)
             buffer.writeInt(0)
         }
-        
+
         // 背景色
         modifier.background?.let { bg ->
             buffer.writeInt(parseColor(bg))
         } ?: run {
             buffer.writeInt(0) // 透明
         }
-        
+
         // 裁剪
         modifier.clip?.let { clip ->
             // 写入字符串：先写入长度，再写入字节
@@ -284,14 +287,14 @@ object WidgetCompiler {
             clipBytes.forEach { buffer.writeByte(it.toInt()) }
         }
     }
-    
+
     // ========================================================================
     // ⭐ 交互功能实现
     // ========================================================================
-    
+
     /**
      * 写入点击修饰器
-     * 
+     *
      * Wire Format 结构:
      * [OP_CODE: MODIFIER_CLICK]
      *   [OP_CODE: HOST_ACTION 或 VALUE_INTEGER_CHANGE_ACTION]
@@ -300,7 +303,7 @@ object WidgetCompiler {
     private fun writeClickModifier(buffer: WireBuffer, action: ClickAction) {
         // 1. 写入 MODIFIER_CLICK
         buffer.writeByte(Operations.MODIFIER_CLICK)
-        
+
         // 2. 根据类型写入不同的动作
         when (action.type) {
             "host_action" -> {
@@ -323,15 +326,15 @@ object WidgetCompiler {
             }
         }
     }
-    
+
     // ========================================================================
     // 辅助函数
     // ========================================================================
-    
+
     private fun parseColor(colorHex: String): Int {
         return colorHex.removePrefix("#").toLong(16).toInt() or -0x1000000
     }
-    
+
     private fun parseTextAlign(align: String): Int {
         return when (align) {
             "LEFT" -> 0

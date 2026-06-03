@@ -1,0 +1,9 @@
+- [x] 文档存在于项目根目录 `IMAGE_RESOURCE_FLOW.md`
+- [x] 文档包含总体数据流 Mermaid 流程图
+- [x] 文档包含解码决策流程 Mermaid 流程图
+- [x] 文档包含缓存与渲染流程 Mermaid 流程图
+- [x] 文档包含编码写入阶段的详细说明（BitmapData、OpCode 101、字段布局、编码方式）
+- [x] 文档包含协议解析阶段的详细说明（BitmapData.read、Operations.read）
+- [x] 文档包含解码缓存阶段的详细说明（RemoteBitmapDecoder、AndroidRemoteContext.loadBitmap、RemoteComposeState）
+- [x] 文档包含渲染显示阶段的详细说明（DrawBitmap、DrawBitmapScaled、ImageLayout、PaintContext）
+- [x] 文档包含关键类和文件索引表

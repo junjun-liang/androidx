@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>创建 GitHub 仓库</title>
+</head>
+<body>
+    <h1>请手动创建 GitHub 仓库</h1>
+    <p>由于 API 认证问题，请按照以下步骤手动创建仓库：</p>
+    
+    <ol>
+        <li>访问 <a href="https://github.com/new" target="_blank">https://github.com/new</a></li>
+        <li>Repository name: <strong>androidx-docs</strong></li>
+        <li>Description: <strong>AndroidX 项目软件架构设计、业务流程文档及 Glance+RemoteCompose 微件入门手册</strong></li>
+        <li>选择 <strong>Public</strong>（公开）</li>
+        <li><strong>不要</strong>勾选 "Add a README file"</li>
+        <li>点击 "Create repository"</li>
+        <li>创建完成后，在终端执行以下命令推送文档：</li>
+    </ol>
+    
+    <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px;">
+cd /Users/liangyingjie/Documents/my_android_projects/androidx/my_docs
+git remote set-url origin git@github.com:junjun-liang/androidx-docs.git
+git push -u origin main
+    </pre>
+    
+    <p>或者使用 HTTPS 方式：</p>
+    
+    <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px;">
+cd /Users/liangyingjie/Documents/my_android_projects/androidx/my_docs
+git remote set-url origin https://github.com/junjun-liang/androidx-docs.git
+git push -u origin main
+    </pre>
+    
+    <script>
+        // 自动打开创建页面
+        window.open('https://github.com/new', '_blank');
+    </script>
+</body>
+</html>

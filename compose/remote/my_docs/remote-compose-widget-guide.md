@@ -4,15 +4,15 @@
 
 ### 1.1 Remote Compose vs AppWidget 原生
 
-| 特性 | AppWidget 原生 | Remote Compose |
-|---|---|---|
-| 布局方式 | XML RemoteViews | Kotlin Composable DSL |
-| 动态更新 | AlarmManager/WorkManager 驱动 | 播放端本地动画 + 表达式 |
-| 自定义绘制 | 不支持 | RemoteCanvas 完整 2D 绘图 |
-| 状态切换 | setViewVisibility() | RemoteStateLayout 即时切换 |
-| 尺寸自适应 | 多套 XML 布局 | CollapsibleColumn/Row 按优先级折叠 |
-| 交互 | PendingIntent | HostAction + ValueChange |
-| 动画 | 不支持 | animateFloat + 路径动画 |
+| 特性    | AppWidget 原生                | Remote Compose               |
+| ----- | --------------------------- | ---------------------------- |
+| 布局方式  | XML RemoteViews             | Kotlin Composable DSL        |
+| 动态更新  | AlarmManager/WorkManager 驱动 | 播放端本地动画 + 表达式                |
+| 自定义绘制 | 不支持                         | RemoteCanvas 完整 2D 绘图        |
+| 状态切换  | setViewVisibility()         | RemoteStateLayout 即时切换       |
+| 尺寸自适应 | 多套 XML 布局                   | CollapsibleColumn/Row 按优先级折叠 |
+| 交互    | PendingIntent               | HostAction + ValueChange     |
+| 动画    | 不支持                         | animateFloat + 路径动画          |
 
 **核心理念**：AppWidget 是"快照式"的——每次更新都是完整的 RemoteViews 替换；Remote Compose 是"文档式"的——创建端生成包含状态和表达式的文档，播放端根据状态变化即时响应，动画和时间驱动完全在播放端本地运行。
 
@@ -37,7 +37,7 @@ graph LR
     RC --> CAP --> BIN --> DOC --> PLAY
 ```
 
----
+***
 
 ## 2. 快速开始
 
@@ -107,7 +107,7 @@ val player = findViewById<RemoteComposePlayer>(R.id.remote_player)
 player.displayDocument(bytes)
 ```
 
----
+***
 
 ## 3. 布局组件详解
 
@@ -173,6 +173,7 @@ fun RemoteColumn(
 ```
 
 **关键特性**：
+
 - `RemoteModifier.weight()` — 弹性高度权重
 - `RemoteArrangement.spacedBy()` — 统一间距
 - `horizontalAlignment` — 子元素水平对齐
@@ -398,6 +399,7 @@ fun RemoteText(
 ```
 
 **Widget 特殊能力**：
+
 - `minFontSize` / `maxFontSize` — 字号自适应范围
 - `overflow = TextOverflow.Ellipsis` — 省略号截断
 - `RemoteString` — 动态文本（来自状态）
@@ -511,31 +513,31 @@ RemoteSpacer(modifier = RemoteModifier.height(16.rdp))  // 固定间距
 RemoteSpacer(modifier = RemoteModifier.weight(1f))       // 弹性间距
 ```
 
----
+***
 
 ## 4. 修饰符系统
 
 ### 4.1 常用修饰符速查表
 
-| 修饰符 | API | 说明 |
-|---|---|---|
-| 内边距 | `.padding(16.rdp)` / `.padding(horizontal, vertical)` | 支持 RemoteDp 动态值 |
-| 背景 | `.background(Color.White)` / `.background(brush)` | 纯色/渐变/画师 |
-| 边框 | `.border(1.rdp, Color.Gray, RemoteRoundedCornerShape(8.rdp))` | 支持形状 |
-| 裁剪 | `.clip(RemoteRoundedCornerShape(12.rdp))` | 圆角/圆形/矩形 |
-| 点击 | `.clickable(action)` | 支持 Action 组合 |
-| 尺寸 | `.size(48.rdp)` / `.width()` / `.height()` | 固定尺寸 |
-| 填满 | `.fillMaxWidth()` / `.fillMaxSize()` | 弹性尺寸 |
-| 透明度 | `.alpha(0.5f)` | 支持 RemoteFloat |
-| 缩放 | `.scale(1.2f)` | 支持 RemoteFloat |
-| 旋转 | `.rotate(45f)` | 支持 RemoteFloat |
-| 权重 | `.weight(1f)` | 仅在 Column/Row 内 |
-| 优先级 | `.priority(10f)` | 仅在 Collapsible 内 |
-| 可见性 | `.visibility(remoteInt)` | 0=不可见, 非0=可见 |
-| 语义 | `.semantics { contentDescription = "..." }` | 无障碍 |
-| 滚动 | `.verticalScroll(state)` | 垂直/水平滚动 |
-| 动画 | `.animationSpec(1)` | 尺寸变化动画 |
-| 跑马灯 | `.basicMarquee()` | 文字滚动 |
+| 修饰符 | API                                                           | 说明               |
+| --- | ------------------------------------------------------------- | ---------------- |
+| 内边距 | `.padding(16.rdp)` / `.padding(horizontal, vertical)`         | 支持 RemoteDp 动态值  |
+| 背景  | `.background(Color.White)` / `.background(brush)`             | 纯色/渐变/画师         |
+| 边框  | `.border(1.rdp, Color.Gray, RemoteRoundedCornerShape(8.rdp))` | 支持形状             |
+| 裁剪  | `.clip(RemoteRoundedCornerShape(12.rdp))`                     | 圆角/圆形/矩形         |
+| 点击  | `.clickable(action)`                                          | 支持 Action 组合     |
+| 尺寸  | `.size(48.rdp)` / `.width()` / `.height()`                    | 固定尺寸             |
+| 填满  | `.fillMaxWidth()` / `.fillMaxSize()`                          | 弹性尺寸             |
+| 透明度 | `.alpha(0.5f)`                                                | 支持 RemoteFloat   |
+| 缩放  | `.scale(1.2f)`                                                | 支持 RemoteFloat   |
+| 旋转  | `.rotate(45f)`                                                | 支持 RemoteFloat   |
+| 权重  | `.weight(1f)`                                                 | 仅在 Column/Row 内  |
+| 优先级 | `.priority(10f)`                                              | 仅在 Collapsible 内 |
+| 可见性 | `.visibility(remoteInt)`                                      | 0=不可见, 非0=可见     |
+| 语义  | `.semantics { contentDescription = "..." }`                   | 无障碍              |
+| 滚动  | `.verticalScroll(state)`                                      | 垂直/水平滚动          |
+| 动画  | `.animationSpec(1)`                                           | 尺寸变化动画           |
+| 跑马灯 | `.basicMarquee()`                                             | 文字滚动             |
 
 ### 4.2 动态值修饰符
 
@@ -559,32 +561,33 @@ fun DynamicModifier() {
 }
 ```
 
----
+***
 
 ## 5. 状态与交互
 
 ### 5.1 远程状态类型
 
-| 类型 | 创建方式 | 用途 |
-|---|---|---|
-| `RemoteFloat` | `rememberMutableRemoteFloat(0f)` / `rememberNamedRemoteFloat("name", 0f)` | 数值、动画 |
-| `RemoteInt` | `rememberMutableRemoteInt(0)` / `rememberNamedRemoteInt("name", 0)` | 索引、计数 |
+| 类型              | 创建方式                                                                                | 用途    |
+| --------------- | ----------------------------------------------------------------------------------- | ----- |
+| `RemoteFloat`   | `rememberMutableRemoteFloat(0f)` / `rememberNamedRemoteFloat("name", 0f)`           | 数值、动画 |
+| `RemoteInt`     | `rememberMutableRemoteInt(0)` / `rememberNamedRemoteInt("name", 0)`                 | 索引、计数 |
 | `RemoteBoolean` | `rememberMutableRemoteBoolean(false)` / `rememberNamedRemoteBoolean("name", false)` | 开关、状态 |
-| `RemoteString` | `rememberMutableRemoteString("")` / `rememberNamedRemoteString("name", "")` | 文本 |
-| `RemoteColor` | `rememberNamedRemoteColor("name", Color.Red)` | 颜色 |
-| `RemoteEnum<T>` | `rememberNamedRemoteEnum("name", MyEnum.A)` | 枚举状态 |
+| `RemoteString`  | `rememberMutableRemoteString("")` / `rememberNamedRemoteString("name", "")`         | 文本    |
+| `RemoteColor`   | `rememberNamedRemoteColor("name", Color.Red)`                                       | 颜色    |
+| `RemoteEnum<T>` | `rememberNamedRemoteEnum("name", MyEnum.A)`                                         | 枚举状态  |
 
 **命名 vs 匿名**：
+
 - 命名状态（`rememberNamed*`）可被宿主端通过名称覆盖值
 - 匿名状态（`rememberMutable*`）仅在文档内部使用
 
 ### 5.2 Action 体系
 
-| Action | API | 说明 |
-|---|---|---|
-| 值变更 | `ValueChange(state, newValue)` | 点击时更新远程状态 |
-| 宿主动作 | `hostAction("action_name")` | 通知宿主端执行动作 |
-| 组合动作 | `combinedAction(action1, action2)` | 顺序执行多个动作 |
+| Action | API                                | 说明        |
+| ------ | ---------------------------------- | --------- |
+| 值变更    | `ValueChange(state, newValue)`     | 点击时更新远程状态 |
+| 宿主动作   | `hostAction("action_name")`        | 通知宿主端执行动作 |
+| 组合动作   | `combinedAction(action1, action2)` | 顺序执行多个动作  |
 
 **交互示例**：
 
@@ -670,7 +673,7 @@ fun LoadingStateWidget() {
 }
 ```
 
----
+***
 
 ## 6. 动画与时间
 
@@ -780,26 +783,26 @@ fun ClockWidget() {
 }
 ```
 
----
+***
 
 ## 7. Widget Profile 约束
 
 ### 7.1 V6 Widget 限制
 
-| 限制 | 说明 |
-|---|---|
-| 禁止自定义字体 | `addFont()` 直接抛异常 |
-| 禁止 matrixFromPath | 不支持路径矩阵 |
-| alpha 不能为 NaN | `image()` 和 `startTextComponent()` 中校验 |
-| fontSize 不能为 NaN | 文本组件中校验 |
-| 浮点表达式操作码验证 | `validateOps()` 确保操作码在 API Level 范围内 |
-| 主题颜色特殊处理 | `android.textColorPrimary/Secondary` 被替换为动画颜色 |
+| 限制                | 说明                                            |
+| ----------------- | --------------------------------------------- |
+| 禁止自定义字体           | `addFont()` 直接抛异常                             |
+| 禁止 matrixFromPath | 不支持路径矩阵                                       |
+| alpha 不能为 NaN     | `image()` 和 `startTextComponent()` 中校验        |
+| fontSize 不能为 NaN  | 文本组件中校验                                       |
+| 浮点表达式操作码验证        | `validateOps()` 确保操作码在 API Level 范围内          |
+| 主题颜色特殊处理          | `android.textColorPrimary/Secondary` 被替换为动画颜色 |
 
 ### 7.2 V6 根内容行为
 
 - 滚动：NONE（不可滚动）
 - 对齐：CENTER
-- 缩放：SCALE_FILL_BOUNDS
+- 缩放：SCALE\_FILL\_BOUNDS
 
 ### 7.3 Wear Widget 白名单
 
@@ -821,7 +824,7 @@ val profile = RcPlatformProfiles.WIDGETS_V7
 val profile = RcPlatformProfiles.WEAR_WIDGETS
 ```
 
----
+***
 
 ## 8. 完整示例
 
@@ -1011,37 +1014,31 @@ fun ClockWidget() {
 }
 ```
 
----
+***
 
 ## 9. 最佳实践与注意事项
 
 ### 9.1 最佳实践
 
-| 场景 | 建议 |
-|---|---|
-| 尺寸自适应 | 使用 `RemoteCollapsibleColumn/Row` + `priority()` 而非多套布局 |
-| 状态切换 | 使用 `RemoteStateLayout` 而非多个文档 |
-| 动画 | 使用 `remote.animateFloat()` 在播放端运行动画，避免频繁更新文档 |
-| 时钟 | 使用 `remote.time.*` 获取播放端时间，无需 AlarmManager |
-| 图片 | 小图标用 `ENCODING_INLINE`，大图用 `rememberNamedRemoteBitmap(url=)` |
-| 间距 | 使用 `RemoteArrangement.spacedBy()` 统一管理，避免逐个设置 padding |
-| 交互 | 使用 `ValueChange` 更新状态，使用 `hostAction` 通知宿主端 |
-| 无障碍 | 为所有可点击元素添加 `.semantics { contentDescription = ... }` |
+| 场景    | 建议                                                           |
+| ----- | ------------------------------------------------------------ |
+| 尺寸自适应 | 使用 `RemoteCollapsibleColumn/Row` + `priority()` 而非多套布局       |
+| 状态切换  | 使用 `RemoteStateLayout` 而非多个文档                                |
+| 动画    | 使用 `remote.animateFloat()` 在播放端运行动画，避免频繁更新文档                 |
+| 时钟    | 使用 `remote.time.*` 获取播放端时间，无需 AlarmManager                   |
+| 图片    | 小图标用 `ENCODING_INLINE`，大图用 `rememberNamedRemoteBitmap(url=)` |
+| 间距    | 使用 `RemoteArrangement.spacedBy()` 统一管理，避免逐个设置 padding        |
+| 交互    | 使用 `ValueChange` 更新状态，使用 `hostAction` 通知宿主端                  |
+| 无障碍   | 为所有可点击元素添加 `.semantics { contentDescription = ... }`         |
 
 ### 9.2 注意事项
 
 1. **密度相关值在创建端转换**：`fontSize`、`letterSpacing` 等使用 `.rsp`（密度相关），在创建端根据本地密度转换为像素。确保创建端的密度与 Widget 目标设备匹配。
-
 2. **URL 图片是同步加载的**：默认 `AndroidBitmapLoader` 在主线程执行网络 I/O，生产环境应注入异步实现。
-
 3. **表达式数组限制**：`RemoteFloat` 表达式最大 30 个元素，复杂表达式会被自动拆分为引用。
-
 4. **V6 Profile 限制**：禁止自定义字体、alpha/fontSize 不能为 NaN、浮点表达式操作码受限。
-
 5. **所有状态的子树都会被录制**：`RemoteStateLayout` 中所有状态的 UI 都会写入文档，不要为每个状态定义完全不同的复杂布局。
-
 6. **RTL 支持**：`RemoteAlignment.Start/End` 和 `RemoteArrangement` 会根据布局方向自动翻转，使用 `RemoteAbsoluteAlignment` 可避免翻转。
-
 7. **命名状态可被覆盖**：宿主端可通过 `overrideFloat()`/`overrideInt()` 等方法覆盖命名状态的值，这是 Widget 动态更新的主要机制。
-
 8. **Widget 更新频率**：虽然动画在播放端运行，但文档本身（状态值）的更新仍受 Widget 更新机制限制。使用 `ValueChange` 实现的交互在播放端即时响应，无需重新创建文档。
+

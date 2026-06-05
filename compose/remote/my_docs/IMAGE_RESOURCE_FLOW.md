@@ -9,7 +9,7 @@
 3. **解码缓存阶段**：根据编码方式和图像类型，将字节数组解码为 Android `Bitmap` 对象，并存入 `RemoteComposeState` 双重缓存。
 4. **渲染显示阶段**：绘制操作通过 `PaintContext` 从缓存中取出 Bitmap，调用 Canvas API 绘制到屏幕。
 
----
+***
 
 ## 2. 总体数据流图
 
@@ -70,7 +70,7 @@ flowchart TD
     style 绘制 fill:#fce4ec,stroke:#e91e63
 ```
 
----
+***
 
 ## 3. 解码决策流程图
 
@@ -111,7 +111,7 @@ flowchart TD
     style URL_ERR fill:#ffebee,stroke:#c62828
 ```
 
----
+***
 
 ## 4. 缓存与渲染流程图
 
@@ -160,7 +160,7 @@ flowchart TD
     style 渲染 fill:#fce4ec,stroke:#c62828
 ```
 
----
+***
 
 ## 5. 各阶段详细文字说明
 
@@ -170,12 +170,12 @@ flowchart TD
 
 `BitmapData` 的操作码为 `Operations.DATA_BITMAP`（OpCode = **101**），属于数据操作类。在二进制协议中，图像数据以如下字段布局写入：
 
-| 字段序号 | 类型 | 字段名 | 说明 |
-|---------|------|--------|------|
-| 1 | INT | imageId | 图像的唯一标识符 |
-| 2 | INT | widthAndType | 高 16 位为 type，低 16 位为 width |
-| 3 | INT | heightAndEncoding | 高 16 位为 encoding，低 16 位为 height |
-| 4 | BYTE_ARRAY | bitmap | 编码后的图像字节数据 |
+| 字段序号 | 类型          | 字段名               | 说明                              |
+| ---- | ----------- | ----------------- | ------------------------------- |
+| 1    | INT         | imageId           | 图像的唯一标识符                        |
+| 2    | INT         | widthAndType      | 高 16 位为 type，低 16 位为 width      |
+| 3    | INT         | heightAndEncoding | 高 16 位为 encoding，低 16 位为 height |
+| 4    | BYTE\_ARRAY | bitmap            | 编码后的图像字节数据                      |
 
 其中 `widthAndType` 和 `heightAndEncoding` 的编码方式为：
 
@@ -186,22 +186,22 @@ int h = (((int) encoding) << 16) | height; // encoding 占高16位，height 占�
 
 #### 编码方式常量表
 
-| 常量名 | 值 | 说明 |
-|--------|---|------|
-| `ENCODING_INLINE` | 0 | 内联编码，图像数据直接嵌入协议流（默认） |
-| `ENCODING_URL` | 1 | URL 引用，data 字段存储 UTF-8 编码的 URL 字符串 |
-| `ENCODING_FILE` | 2 | 文件引用，data 字段存储 UTF-8 编码的文件路径 |
-| `ENCODING_EMPTY` | 3 | 空位图，不携带数据，仅分配指定尺寸的空白 Bitmap |
+| 常量名               | 值 | 说明                                 |
+| ----------------- | - | ---------------------------------- |
+| `ENCODING_INLINE` | 0 | 内联编码，图像数据直接嵌入协议流（默认）               |
+| `ENCODING_URL`    | 1 | URL 引用，data 字段存储 UTF-8 编码的 URL 字符串 |
+| `ENCODING_FILE`   | 2 | 文件引用，data 字段存储 UTF-8 编码的文件路径       |
+| `ENCODING_EMPTY`  | 3 | 空位图，不携带数据，仅分配指定尺寸的空白 Bitmap        |
 
 #### 图像类型常量表
 
-| 常量名 | 值 | 说明 |
-|--------|---|------|
-| `TYPE_PNG_8888` | 0 | PNG 格式，解码为 ARGB_8888（默认） |
-| `TYPE_PNG` | 1 | PNG 格式（通用） |
-| `TYPE_RAW8` | 2 | 原始 8 位灰度数据，每像素 1 字节 |
-| `TYPE_RAW8888` | 3 | 原始 ARGB_8888 数据，每像素 4 字节 |
-| `TYPE_PNG_ALPHA_8` | 4 | PNG 格式，但解码为 ALPHA_8 配置 |
+| 常量名                | 值 | 说明                        |
+| ------------------ | - | ------------------------- |
+| `TYPE_PNG_8888`    | 0 | PNG 格式，解码为 ARGB\_8888（默认） |
+| `TYPE_PNG`         | 1 | PNG 格式（通用）                |
+| `TYPE_RAW8`        | 2 | 原始 8 位灰度数据，每像素 1 字节       |
+| `TYPE_RAW8888`     | 3 | 原始 ARGB\_8888 数据，每像素 4 字节 |
+| `TYPE_PNG_ALPHA_8` | 4 | PNG 格式，但解码为 ALPHA\_8 配置   |
 
 #### 创建端写入流程
 
@@ -235,7 +235,7 @@ public int storeBitmap(@NonNull Object image) {
 - `imageToByteArray(Object image)`：将平台 Bitmap 转换为 PNG 字节数组
 - `getImageWidth(Object image)`：获取图像宽度
 - `getImageHeight(Object image)`：获取图像高度
-- `isAlpha8Image(Object image)`：判断图像是否为 ALPHA_8 格式
+- `isAlpha8Image(Object image)`：判断图像是否为 ALPHA\_8 格式
 
 `RemoteComposeBuffer` 中的写入方法最终调用 `BitmapData.apply(WireBuffer, ...)` 将数据写入二进制流：
 
@@ -264,7 +264,7 @@ public int storeBitmapUrl(int imageId, String url, int width, int height) {
 }
 ```
 
----
+***
 
 ### 5.2 协议解析阶段
 
@@ -326,7 +326,6 @@ public static void read(@NonNull WireBuffer buffer, @NonNull List<Operation> ope
        throw new RuntimeException("Dimension of image is invalid " + width + "x" + height);
    }
    ```
-
 2. **URL 开关检查**：如果 `Limits.ENABLE_IMAGE_URLS` 为 `false`，则不允许使用 `ENCODING_URL` 编码
    ```java
    if (!Limits.ENABLE_IMAGE_URLS) {
@@ -336,7 +335,7 @@ public static void read(@NonNull WireBuffer buffer, @NonNull List<Operation> ope
    }
    ```
 
----
+***
 
 ### 5.3 解码缓存阶段
 
@@ -380,17 +379,17 @@ public void loadBitmap(int imageId, short encoding, short type,
 
 `RemoteBitmapDecoder.decodeBitmap()` 是核心解码入口，根据 `encoding × type` 组合选择不同的解码策略：
 
-| encoding | type | 解码方式 |
-|----------|------|---------|
-| `ENCODING_INLINE` (0) | `TYPE_PNG_8888` (0) | `BitmapFactory.decodeByteArray()` + bounds check |
-| `ENCODING_INLINE` (0) | `TYPE_PNG_ALPHA_8` (4) | `BitmapFactory` with `ALPHA_8` config + 格式转换 |
-| `ENCODING_INLINE` (0) | `TYPE_RAW8888` (3) | `Bitmap.createBitmap()` + 逐像素 `setPixels()` |
-| `ENCODING_INLINE` (0) | `TYPE_RAW8` (2) | 灰度扩展 `0x1010101 * byte` → ARGB |
-| `ENCODING_FILE` (2) | — | `FileInputStream` + `BitmapFactory.decodeStream()` |
-| `ENCODING_URL` (1) | — | `BitmapLoader.loadBitmap(url)` + `BitmapFactory.decodeStream()` |
-| `ENCODING_EMPTY` (3) | — | `Bitmap.createBitmap()` 空白位图 |
+| encoding              | type                   | 解码方式                                                            |
+| --------------------- | ---------------------- | --------------------------------------------------------------- |
+| `ENCODING_INLINE` (0) | `TYPE_PNG_8888` (0)    | `BitmapFactory.decodeByteArray()` + bounds check                |
+| `ENCODING_INLINE` (0) | `TYPE_PNG_ALPHA_8` (4) | `BitmapFactory` with `ALPHA_8` config + 格式转换                    |
+| `ENCODING_INLINE` (0) | `TYPE_RAW8888` (3)     | `Bitmap.createBitmap()` + 逐像素 `setPixels()`                     |
+| `ENCODING_INLINE` (0) | `TYPE_RAW8` (2)        | 灰度扩展 `0x1010101 * byte` → ARGB                                  |
+| `ENCODING_FILE` (2)   | —                      | `FileInputStream` + `BitmapFactory.decodeStream()`              |
+| `ENCODING_URL` (1)    | —                      | `BitmapLoader.loadBitmap(url)` + `BitmapFactory.decodeStream()` |
+| `ENCODING_EMPTY` (3)  | —                      | `Bitmap.createBitmap()` 空白位图                                    |
 
-**TYPE_PNG_8888 解码流程**：
+**TYPE\_PNG\_8888 解码流程**：
 
 ```java
 // 安全预检：仅解析边界，不解码像素
@@ -403,7 +402,7 @@ checkBounds(opts, width, height); // 确保实际尺寸不超过声明值
 image = BitmapFactory.decodeByteArray(data, 0, data.length);
 ```
 
-**TYPE_PNG_ALPHA_8 解码流程**：
+**TYPE\_PNG\_ALPHA\_8 解码流程**：
 
 ```java
 // 预检同上...
@@ -424,7 +423,7 @@ if (!image.getConfig().equals(Bitmap.Config.ALPHA_8)) {
 }
 ```
 
-**TYPE_RAW8888 解码流程**：
+**TYPE\_RAW8888 解码流程**：
 
 ```java
 image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
@@ -436,7 +435,7 @@ for (int i = 0; i < idata.length; i++) {
 image.setPixels(idata, 0, width, 0, 0, width, height);
 ```
 
-**TYPE_RAW8 解码流程**：
+**TYPE\_RAW8 解码流程**：
 
 ```java
 image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
@@ -467,10 +466,10 @@ private static void checkBounds(BitmapFactory.Options opts, int maxWidth, int ma
 
 `RemoteComposeState` 维护两个与图像相关的缓存映射：
 
-| 缓存字段 | 类型 | 用途 |
-|----------|------|------|
-| `mIntDataMap` | `IntMap<Object>` | imageId → Bitmap 对象（解码后的像素数据） |
-| `mObjectMap` | `IntMap<Object>` | imageId → BitmapData 元数据（宽高、编码等） |
+| 缓存字段          | 类型               | 用途                               |
+| ------------- | ---------------- | -------------------------------- |
+| `mIntDataMap` | `IntMap<Object>` | imageId → Bitmap 对象（解码后的像素数据）    |
+| `mObjectMap`  | `IntMap<Object>` | imageId → BitmapData 元数据（宽高、编码等） |
 
 - `mIntDataMap` 通过 `cacheData(imageId, bitmap)` 和 `getFromId(imageId)` 操作，用于绘制时快速获取 Bitmap。
 - `mObjectMap` 通过 `updateObject(imageId, value)` 和 `getObject(imageId)` 操作，用于 `ImageAttribute` 等操作获取图像元信息。
@@ -497,7 +496,7 @@ shader = new BitmapShader(bitmap,
 mContext.mRemoteComposeState.cacheData(bitmapId + BITMAP_TEXTURE_ID_OFFSET, shader);
 ```
 
----
+***
 
 ### 5.4 渲染显示阶段
 
@@ -505,7 +504,7 @@ mContext.mRemoteComposeState.cacheData(bitmapId + BITMAP_TEXTURE_ID_OFFSET, shad
 
 Remote Compose 协议定义了三种 Bitmap 绘制操作和一种图像布局组件：
 
-**DRAW_BITMAP（OpCode = 44）— DrawBitmap**
+**DRAW\_BITMAP（OpCode = 44）— DrawBitmap**
 
 简单缩放绘制，支持动态表达式坐标。将整个 Bitmap 绘制到指定的矩形区域：
 
@@ -522,7 +521,7 @@ public void paint(@NonNull PaintContext context) {
 
 坐标值支持动态表达式（NaN 编码），通过 `updateVariables()` 在每帧从 `RemoteContext` 获取最新值。
 
-**DRAW_BITMAP_INT（OpCode = 66）— DrawBitmapInt**
+**DRAW\_BITMAP\_INT（OpCode = 66）— DrawBitmapInt**
 
 源/目标矩形绘制，使用整数坐标。支持从 Bitmap 的局部区域绘制到目标区域：
 
@@ -539,7 +538,7 @@ public void paint(@NonNull PaintContext context) {
 
 字段布局：`imageId(INT)`, `srcLeft(INT)`, `srcTop(INT)`, `srcRight(INT)`, `srcBottom(INT)`, `dstLeft(INT)`, `dstTop(INT)`, `dstRight(INT)`, `dstBottom(INT)`, `cdId(INT)`
 
-**DRAW_BITMAP_SCALED（OpCode = 149）— DrawBitmapScaled**
+**DRAW\_BITMAP\_SCALED（OpCode = 149）— DrawBitmapScaled**
 
 支持 8 种缩放类型的绘制操作，通过 `ImageScaling` 计算最终的目标矩形：
 
@@ -563,18 +562,18 @@ public void paint(@NonNull PaintContext context) {
 
 8 种缩放类型（定义在 `ImageScaling` 中）：
 
-| 常量 | 值 | 说明 |
-|------|---|------|
-| `SCALE_NONE` | 0 | 不缩放，按原始尺寸绘制 |
-| `SCALE_INSIDE` | 1 | 等比缩放，完整显示在目标区域内 |
-| `SCALE_FILL_WIDTH` | 2 | 填充宽度，高度等比缩放 |
-| `SCALE_FILL_HEIGHT` | 3 | 填充高度，宽度等比缩放 |
-| `SCALE_FIT` | 4 | 等比缩放适配，类似 FIT_CENTER |
-| `SCALE_CROP` | 5 | 等比缩放裁剪，填满目标区域 |
-| `SCALE_FILL_BOUNDS` | 6 | 拉伸填满目标区域（可能变形） |
-| `SCALE_FIXED_SCALE` | 7 | 按 scaleFactor 固定比例缩放 |
+| 常量                  | 值 | 说明                    |
+| ------------------- | - | --------------------- |
+| `SCALE_NONE`        | 0 | 不缩放，按原始尺寸绘制           |
+| `SCALE_INSIDE`      | 1 | 等比缩放，完整显示在目标区域内       |
+| `SCALE_FILL_WIDTH`  | 2 | 填充宽度，高度等比缩放           |
+| `SCALE_FILL_HEIGHT` | 3 | 填充高度，宽度等比缩放           |
+| `SCALE_FIT`         | 4 | 等比缩放适配，类似 FIT\_CENTER |
+| `SCALE_CROP`        | 5 | 等比缩放裁剪，填满目标区域         |
+| `SCALE_FILL_BOUNDS` | 6 | 拉伸填满目标区域（可能变形）        |
+| `SCALE_FIXED_SCALE` | 7 | 按 scaleFactor 固定比例缩放  |
 
-#### Layout 组件：LAYOUT_IMAGE（OpCode = 234）— ImageLayout
+#### Layout 组件：LAYOUT\_IMAGE（OpCode = 234）— ImageLayout
 
 声明式图像组件，集成在布局系统中，支持 Padding、Modifier、Alpha 透明度等：
 
@@ -677,13 +676,13 @@ override fun drawBitmap(id: Int, left: Float, top: Float, right: Float, bottom: 
 
 #### 辅助操作
 
-**ATTRIBUTE_IMAGE（OpCode = 171）— ImageAttribute**
+**ATTRIBUTE\_IMAGE（OpCode = 171）— ImageAttribute**
 
 图像属性提取操作，可从 `BitmapData` 元数据中提取宽度或高度，存入浮点变量：
 
-| 属性类型 | 值 | 说明 |
-|----------|---|------|
-| `IMAGE_WIDTH` | 0 | 提取图像宽度 |
+| 属性类型           | 值 | 说明     |
+| -------------- | - | ------ |
+| `IMAGE_WIDTH`  | 0 | 提取图像宽度 |
 | `IMAGE_HEIGHT` | 1 | 提取图像高度 |
 
 ```java
@@ -702,7 +701,7 @@ public void paint(@NonNull PaintContext context) {
 }
 ```
 
-**DRAW_TO_BITMAP（OpCode = 190）— DrawToBitmap**
+**DRAW\_TO\_BITMAP（OpCode = 190）— DrawToBitmap**
 
 离屏渲染操作，将后续绘制操作重定向到指定 Bitmap，而非主 Canvas：
 
@@ -720,30 +719,31 @@ public void paint(@NonNull PaintContext context) {
 
 Bitmap 可作为 `BitmapShader` 纹理使用，通过 `PaintBundle.setTextureShader()` 设置。缓存键为 `bitmapId + BITMAP_TEXTURE_ID_OFFSET`（偏移 2000），首次使用时创建 `BitmapShader` 并缓存，后续直接复用。
 
----
+***
 
 ## 6. 关键类和文件索引表
 
-| 阶段 | 类 | 路径 |
-|------|-----|------|
-| 协议定义 | Operations.java | remote-core/src/main/java/androidx/compose/remote/core/Operations.java |
-| 图像数据操作 | BitmapData.java | remote-core/src/main/java/androidx/compose/remote/core/operations/BitmapData.java |
-| 图像属性 | ImageAttribute.java | remote-core/src/main/java/androidx/compose/remote/core/operations/ImageAttribute.java |
-| 绘制-简单 | DrawBitmap.java | remote-core/src/main/java/androidx/compose/remote/core/operations/DrawBitmap.java |
-| 绘制-整数坐标 | DrawBitmapInt.java | remote-core/src/main/java/androidx/compose/remote/core/operations/DrawBitmapInt.java |
-| 绘制-缩放 | DrawBitmapScaled.java | remote-core/src/main/java/androidx/compose/remote/core/operations/DrawBitmapScaled.java |
-| 绘制到位图 | DrawToBitmap.java | remote-core/src/main/java/androidx/compose/remote/core/operations/DrawToBitmap.java |
-| 图像布局组件 | ImageLayout.java | remote-core/src/main/java/androidx/compose/remote/core/operations/layout/managers/ImageLayout.java |
-| 缩放算法 | ImageScaling.java | remote-core/src/main/java/androidx/compose/remote/core/operations/utilities/ImageScaling.java |
-| 缓冲区写入 | RemoteComposeBuffer.java | remote-core/src/main/java/androidx/compose/remote/core/RemoteComposeBuffer.java |
-| 状态缓存 | RemoteComposeState.java | remote-core/src/main/java/androidx/compose/remote/core/RemoteComposeState.java |
-| 抽象上下文 | RemoteContext.java | remote-core/src/main/java/androidx/compose/remote/core/RemoteContext.java |
-| 平台服务接口 | RcPlatformServices.java | remote-core/src/main/java/androidx/compose/remote/core/RcPlatformServices.java |
-| 安全限制常量 | Limits.java | remote-core/src/main/java/androidx/compose/remote/core/Limits.java |
-| Android上下文 | AndroidRemoteContext.java | remote-player-core/src/main/java/androidx/compose/remote/player/core/platform/AndroidRemoteContext.java |
-| 图像解码器 | RemoteBitmapDecoder.java | remote-player-core/src/main/java/androidx/compose/remote/player/core/platform/RemoteBitmapDecoder.java |
-| URL加载接口 | BitmapLoader.java | remote-player-core/src/main/java/androidx/compose/remote/player/core/platform/BitmapLoader.java |
-| URL加载实现 | AndroidBitmapLoader.java | remote-player-core/src/main/java/androidx/compose/remote/player/core/platform/AndroidBitmapLoader.java |
-| Android绘制上下文 | AndroidPaintContext.java | remote-player-core/src/main/java/androidx/compose/remote/player/core/platform/AndroidPaintContext.java |
-| Compose绘制上下文 | ComposePaintContext.kt | remote-player-compose/src/main/java/androidx/compose/remote/player/compose/context/ComposePaintContext.kt |
-| 创建端写入器 | RemoteComposeWriter.java | remote-creation-core/src/main/java/androidx/compose/remote/creation/RemoteComposeWriter.java |
+| 阶段           | 类                         | 路径                                                                                                        |
+| ------------ | ------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 协议定义         | Operations.java           | remote-core/src/main/java/androidx/compose/remote/core/Operations.java                                    |
+| 图像数据操作       | BitmapData.java           | remote-core/src/main/java/androidx/compose/remote/core/operations/BitmapData.java                         |
+| 图像属性         | ImageAttribute.java       | remote-core/src/main/java/androidx/compose/remote/core/operations/ImageAttribute.java                     |
+| 绘制-简单        | DrawBitmap.java           | remote-core/src/main/java/androidx/compose/remote/core/operations/DrawBitmap.java                         |
+| 绘制-整数坐标      | DrawBitmapInt.java        | remote-core/src/main/java/androidx/compose/remote/core/operations/DrawBitmapInt.java                      |
+| 绘制-缩放        | DrawBitmapScaled.java     | remote-core/src/main/java/androidx/compose/remote/core/operations/DrawBitmapScaled.java                   |
+| 绘制到位图        | DrawToBitmap.java         | remote-core/src/main/java/androidx/compose/remote/core/operations/DrawToBitmap.java                       |
+| 图像布局组件       | ImageLayout.java          | remote-core/src/main/java/androidx/compose/remote/core/operations/layout/managers/ImageLayout.java        |
+| 缩放算法         | ImageScaling.java         | remote-core/src/main/java/androidx/compose/remote/core/operations/utilities/ImageScaling.java             |
+| 缓冲区写入        | RemoteComposeBuffer.java  | remote-core/src/main/java/androidx/compose/remote/core/RemoteComposeBuffer.java                           |
+| 状态缓存         | RemoteComposeState.java   | remote-core/src/main/java/androidx/compose/remote/core/RemoteComposeState.java                            |
+| 抽象上下文        | RemoteContext.java        | remote-core/src/main/java/androidx/compose/remote/core/RemoteContext.java                                 |
+| 平台服务接口       | RcPlatformServices.java   | remote-core/src/main/java/androidx/compose/remote/core/RcPlatformServices.java                            |
+| 安全限制常量       | Limits.java               | remote-core/src/main/java/androidx/compose/remote/core/Limits.java                                        |
+| Android上下文   | AndroidRemoteContext.java | remote-player-core/src/main/java/androidx/compose/remote/player/core/platform/AndroidRemoteContext.java   |
+| 图像解码器        | RemoteBitmapDecoder.java  | remote-player-core/src/main/java/androidx/compose/remote/player/core/platform/RemoteBitmapDecoder.java    |
+| URL加载接口      | BitmapLoader.java         | remote-player-core/src/main/java/androidx/compose/remote/player/core/platform/BitmapLoader.java           |
+| URL加载实现      | AndroidBitmapLoader.java  | remote-player-core/src/main/java/androidx/compose/remote/player/core/platform/AndroidBitmapLoader.java    |
+| Android绘制上下文 | AndroidPaintContext.java  | remote-player-core/src/main/java/androidx/compose/remote/player/core/platform/AndroidPaintContext.java    |
+| Compose绘制上下文 | ComposePaintContext.kt    | remote-player-compose/src/main/java/androidx/compose/remote/player/compose/context/ComposePaintContext.kt |
+| 创建端写入器       | RemoteComposeWriter.java  | remote-creation-core/src/main/java/androidx/compose/remote/creation/RemoteComposeWriter.java              |
+

@@ -128,6 +128,19 @@ import androidx.compose.remote.integration.view.demos.examples.TestDrawContentDe
 import androidx.compose.remote.integration.view.demos.examples.WeatherDemo
 import androidx.compose.remote.integration.view.demos.examples.countDown
 import androidx.compose.remote.integration.view.demos.examples.cube3d
+import androidx.compose.remote.integration.view.demos.examples.cubeInteractive
+import androidx.compose.remote.integration.view.demos.examples.demoGraphs2
+import androidx.compose.remote.integration.view.demos.examples.demoLinearRegression
+import androidx.compose.remote.integration.view.demos.examples.rcJsonGraphs2
+import androidx.compose.remote.integration.view.demos.examples.rcJsonLinearRegression
+import androidx.compose.remote.integration.view.demos.examples.rcJsonMacroDemo
+import androidx.compose.remote.integration.view.demos.examples.rcJsonMacroLocalDemo
+import androidx.compose.remote.integration.view.demos.examples.rcJsonParticleSphere
+import androidx.compose.remote.integration.view.demos.examples.rcJsonPressureGauge
+import androidx.compose.remote.integration.view.demos.examples.rcJsonReferencedOperationsMacroDemo
+import androidx.compose.remote.integration.view.demos.examples.rcJsonStyleMacroDemo
+import androidx.compose.remote.integration.view.demos.examples.rcJsonTextDemo8
+import androidx.compose.remote.integration.view.demos.examples.rcJsonTicker
 import androidx.compose.remote.integration.view.demos.examples.shaderFireworks
 import androidx.compose.remote.integration.view.demos.utils.RCDoc
 import androidx.compose.remote.player.core.RemoteDocument
@@ -331,6 +344,48 @@ class ExperimentActivity : ComponentActivity() {
                 ),
             "Procedural..." to
                 listOf(
+                    getpc("JSON Stock") { rcJsonTicker() },
+                    getpc("JSON Graphs 2") { rcJsonGraphs2() },
+                    getp("Demo Graphs 2") { demoGraphs2() },
+                    getpc("JSON Pressure Gauge") { rcJsonPressureGauge() },
+                    getpc("JSON Particle Sphere") { rcJsonParticleSphere() },
+                    getpc("JSON Linear Regression") {
+                        val nPoints = 50
+                        val trueSlope = 0.5f
+                        val trueIntercept = 10f
+                        val noiseScale = 2f
+
+                        val xData =
+                            FloatArray(nPoints) {
+                                it.toFloat() + (Random.nextFloat() - 0.5f) * noiseScale
+                            }
+                        val yData =
+                            FloatArray(nPoints) {
+                                trueSlope * it +
+                                    trueIntercept +
+                                    (Random.nextFloat() - 0.5f) * noiseScale * 4f
+                            }
+                        rcJsonLinearRegression(xData, yData)
+                    },
+                    getpc("Linear Regression") {
+                        val nPoints = 50
+                        val trueSlope = 0.5f
+                        val trueIntercept = 10f
+                        val noiseScale = 2f
+
+                        val xData =
+                            FloatArray(nPoints) {
+                                it.toFloat() + (Random.nextFloat() - 0.5f) * noiseScale
+                            }
+                        val yData =
+                            FloatArray(nPoints) {
+                                trueSlope * it +
+                                    trueIntercept +
+                                    (Random.nextFloat() - 0.5f) * noiseScale * 4f
+                            }
+                        demoLinearRegression(xData, yData)
+                    },
+                    getpc("JSON Card") { rcJsonTextDemo8() },
                     getb("Rc DSL Clock Demo") { dslClock() },
                     getb("Rc DSL Ticker Demo") { dslTicker() },
                     getb("Rc DSL Demo") { dslDemo() },
@@ -344,6 +399,10 @@ class ExperimentActivity : ComponentActivity() {
                     getpc("Referenced Macro") { RcReferencedMacroDemo() },
                     getpc("Macro Inclusion") { RcReferencedOperationsMacroDemo() },
                     getpc("Style Macros") { RcStyleMacroDemo() },
+                    getpc("JSON Macros") { rcJsonMacroDemo() },
+                    getpc("JSON Local Macros") { rcJsonMacroLocalDemo() },
+                    getpc("JSON Macro Inclusion") { rcJsonReferencedOperationsMacroDemo() },
+                    getpc("JSON Style Macros") { rcJsonStyleMacroDemo() },
                     getpc("Simple Switch") { RcSimpleSwitchDemo() },
                     getpc("Switch DSL") { RcSwitchWidgetDemo() },
                     getpc("Slanted button") { SlantedButtonDemo() },
@@ -376,11 +435,48 @@ class ExperimentActivity : ComponentActivity() {
                     getpc("Text baseline") { RcTextDemo() },
                     getpc("CountDown") { countDown() },
                     getpc("Cube 3D") { cube3d() },
+                    getpc("Cube 3D (Interactive)") { cubeInteractive() },
                     getpc("Shader Calendar") { ShaderCalendar() },
                     getpc("Ride Share") { rideShare.rideShare() },
                 ),
             "Java..." to listOf(getp("pathTest") { pathTest() }),
         )
+
+    fun getdoc(
+        name: String,
+        color: Color = toRcColor(name, 0.1f),
+        gen: () -> RCDoc,
+    ): RemoteComposeFunc {
+        return object : RemoteComposeFunc {
+            private var buildTime: Float = 0f
+
+            @Composable override fun Run() {}
+
+            @Composable
+            override fun getDoc(): MutableState<CoreDocument?> {
+                val time = System.nanoTime()
+                val rcdoc = gen()
+                val doc = rcdoc.getDoc()
+                val doc2: MutableState<CoreDocument?> = remember {
+                    mutableStateOf(doc?.getDocument())
+                }
+                buildTime = (System.nanoTime() - time) * 1E-6f
+                return doc2
+            }
+
+            override fun getBuildTime(): Float {
+                return buildTime
+            }
+
+            override fun getColor(): Color {
+                return color
+            }
+
+            override fun toString(): String {
+                return name
+            }
+        }
+    }
 
     fun getpc(
         name: String,

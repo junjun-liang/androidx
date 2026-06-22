@@ -24,18 +24,17 @@ import androidx.compose.remote.creation.compose.capture.createCreationDisplayInf
 import androidx.compose.remote.creation.compose.layout.RemotePaddingValues
 import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 import androidx.compose.remote.creation.compose.modifier.size
-import androidx.compose.remote.creation.compose.painter.painterRemoteBitmap
 import androidx.compose.remote.creation.compose.shapes.RemoteCircleShape
 import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rc
 import androidx.compose.remote.creation.compose.state.rdp
-import androidx.compose.remote.creation.compose.state.rememberNamedRemoteBitmap
+import androidx.compose.remote.creation.compose.state.rememberNamedRemoteImageBitmap
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
-import androidx.compose.remote.player.compose.test.utils.screenshot.rule.ComposableWrappers
-import androidx.compose.remote.player.compose.test.utils.screenshot.rule.RemoteScreenshotTestRule
+import androidx.compose.remote.player.compose.test.utils.ComposableWrappers
+import androidx.compose.remote.player.compose.test.utils.RemoteScreenshotTestRule
 import androidx.compose.remote.testing.RemoteCaptureTestRule
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -237,12 +236,11 @@ class RemoteButtonTest {
             remoteCreationDisplayInfo = creationDisplayInfo,
         ) {
             val backgroundImage =
-                rememberNamedRemoteBitmap(name = "backgroundImage") {
+                rememberNamedRemoteImageBitmap(name = "backgroundImage") {
                     createImage(200, 200).asImageBitmap()
                 }
             ComponentContainer {
-                val containerPainter =
-                    RemoteButtonDefaults.containerPainter(painterRemoteBitmap(backgroundImage))
+                val containerPainter = RemoteButtonDefaults.containerPainter(backgroundImage)
                 RemoteButton(
                     onClick = testAction,
                     modifier = RemoteModifier.buttonSizeModifier(),
@@ -261,13 +259,14 @@ class RemoteButtonTest {
             remoteCreationDisplayInfo = creationDisplayInfo,
         ) {
             val backgroundImage =
-                rememberNamedRemoteBitmap(name = "button_disabled_container_background_image") {
+                rememberNamedRemoteImageBitmap(
+                    name = "button_disabled_container_background_image"
+                ) {
                     createImage(200, 200).asImageBitmap()
                 }
             ComponentContainer {
                 val enabled = false.rb
-                val containerPainter =
-                    RemoteButtonDefaults.containerPainter(painterRemoteBitmap(backgroundImage))
+                val containerPainter = RemoteButtonDefaults.containerPainter(backgroundImage)
                 RemoteButton(
                     onClick = testAction,
                     modifier = RemoteModifier.buttonSizeModifier(),

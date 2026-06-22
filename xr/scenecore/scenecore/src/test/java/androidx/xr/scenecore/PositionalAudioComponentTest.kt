@@ -27,6 +27,7 @@ import androidx.xr.runtime.SessionCreateSuccess
 import androidx.xr.scenecore.testing.PositionalAudioComponentTester
 import androidx.xr.scenecore.testing.SceneCoreTestRule
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Before
 import org.junit.Rule
@@ -46,7 +47,7 @@ class PositionalAudioComponentTest {
     private lateinit var session: Session
 
     @Before
-    fun setUp() {
+    fun setUp(): Unit = runBlocking {
         activity = Robolectric.buildActivity(ComponentActivity::class.java).create().start().get()
         val testDispatcher = StandardTestDispatcher()
         val result =
@@ -95,14 +96,17 @@ class PositionalAudioComponentTest {
     }
 
     @Test
-    fun setPointSourceParams_setsOnRuntime() {
+    fun pointSourceParams_updatesParamsForFuturePlays() {
         val params = PointSourceParams()
         val component = PositionalAudioComponent.create(session, params)
         val tester = scenecoreTestRule.createTester<PositionalAudioComponentTester>(component)
 
-        val newParams = PointSourceParams()
+        assertThat(component.pointSourceParams).isEqualTo(params)
 
-        component.setPointSourceParams(newParams)
+        val newParams = PointSourceParams()
+        component.pointSourceParams = newParams
+
+        assertThat(component.pointSourceParams).isEqualTo(newParams)
 
         assertThat(tester.pointSourceParams).isEqualTo(newParams)
     }

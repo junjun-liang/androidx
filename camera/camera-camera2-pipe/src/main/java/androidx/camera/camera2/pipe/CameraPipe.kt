@@ -31,11 +31,11 @@ import androidx.camera.camera2.pipe.config.DaggerCameraPipeComponent
 import androidx.camera.camera2.pipe.config.FrameGraphConfigModule
 import androidx.camera.camera2.pipe.config.ThreadConfigModule
 import androidx.camera.camera2.pipe.core.Debug
-import androidx.camera.camera2.pipe.core.DurationNs
 import androidx.camera.camera2.pipe.core.Log
 import androidx.camera.camera2.pipe.media.ImageSources
 import androidx.camera.featurecombinationquery.CameraDeviceSetupCompat
 import java.util.concurrent.Executor
+import kotlin.time.Duration
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
@@ -149,6 +149,7 @@ public interface CameraPipe {
         val imageSources: ImageSources? = null,
         val flags: Flags = Flags(),
         val platformApiCompat: PlatformApiCompat? = null,
+        val memoryEstimator: MemoryEstimator = MemoryEstimator.create(),
     )
 
     /**
@@ -156,9 +157,14 @@ public interface CameraPipe {
      *
      * @param strictModeEnabled disable all special treatment in
      *   [androidx.camera.camera2.pipe.compat.Camera2Quirks]
+     * @param cameraOpenAbortEnabled enable fast track camera open cancellation on superseding
+     *   requests
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-    public data class Flags(val strictModeEnabled: Boolean = false)
+    public data class Flags(
+        val strictModeEnabled: Boolean = false,
+        val cameraOpenAbortEnabled: Boolean = false,
+    )
 
     /**
      * Application level configuration for Camera2Interop callbacks. If set, these callbacks will be
@@ -167,7 +173,7 @@ public interface CameraPipe {
     public data class CameraInteropConfig(
         val cameraDeviceStateCallback: CameraDevice.StateCallback? = null,
         val cameraCaptureSessionListener: CameraInterop.CaptureSessionListener? = null,
-        val cameraOpenRetryMaxTimeoutNs: DurationNs? = null,
+        val cameraOpenRetryMaxTimeout: Duration? = null,
         val cameraSystemCallbacks: CameraInterop.CameraSystemCallbacks? = null,
     )
 

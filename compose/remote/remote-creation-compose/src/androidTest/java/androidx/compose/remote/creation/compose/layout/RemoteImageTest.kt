@@ -25,13 +25,14 @@ import androidx.compose.remote.creation.compose.capture.createCreationDisplayInf
 import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 import androidx.compose.remote.creation.compose.modifier.size
 import androidx.compose.remote.creation.compose.state.rdp
-import androidx.compose.remote.creation.compose.state.rememberNamedRemoteBitmap
+import androidx.compose.remote.creation.compose.state.rememberNamedRemoteImageBitmap
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.remote.creation.compose.test.R
-import androidx.compose.remote.player.compose.test.utils.screenshot.rule.ComposableWrappers
-import androidx.compose.remote.player.compose.test.utils.screenshot.rule.RemoteScreenshotTestRule
+import androidx.compose.remote.player.compose.test.utils.ComposableWrappers
+import androidx.compose.remote.player.compose.test.utils.RemoteScreenshotTestRule
 import androidx.compose.remote.player.core.platform.BitmapLoader
+import androidx.compose.remote.testing.LimitsRule
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.graphics.asImageBitmap
@@ -60,6 +61,8 @@ class RemoteImageTest {
                 },
         )
 
+    @get:Rule val limitsRule = LimitsRule()
+
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
@@ -71,7 +74,7 @@ class RemoteImageTest {
             playComposableWrapper = ComposableWrappers.blackBackground,
         ) {
             val avatarImage =
-                rememberNamedRemoteBitmap(name = "avatarImage") {
+                rememberNamedRemoteImageBitmap(name = "avatarImage") {
                     createImage(size, size).asImageBitmap()
                 }
             RemoteImage(
@@ -93,7 +96,7 @@ class RemoteImageTest {
             playComposableWrapper = ComposableWrappers.blackBackground,
         ) {
             val backgroundImage =
-                rememberNamedRemoteBitmap(name = "backgroundImage") {
+                rememberNamedRemoteImageBitmap(name = "backgroundImage") {
                     createImage(size, size).asImageBitmap()
                 }
             RemoteImage(
@@ -108,6 +111,7 @@ class RemoteImageTest {
 
     @Test
     fun remoteImageWithDefaultUrl() {
+        limitsRule.setEnableImageUrls(true)
         val size = 48
         remoteComposeTestRule.runScreenshotTest(
             remoteCreationDisplayInfo =
@@ -115,7 +119,7 @@ class RemoteImageTest {
         ) {
             // Without PlayerState API, will be blank
             val dummyImage =
-                rememberNamedRemoteBitmap(
+                rememberNamedRemoteImageBitmap(
                     name = "dummy",
                     url = "android.resource://androidx.compose.remote.foundation/drawable/dummy",
                 )
@@ -144,6 +148,33 @@ class RemoteImageTest {
                 contentScale = ContentScale.Fit,
                 alpha = 0.6f.rf,
             )
+        }
+    }
+
+    @Test
+    fun remoteImageWithUrl_whenUrlsDisabled_failsToRender() {
+        // Explicitly disable URLs and Files (restoring production default)
+        limitsRule.setEnableImageUrls(false)
+
+        val size = 48
+        org.junit.Assert.assertThrows(RuntimeException::class.java) {
+            remoteComposeTestRule.runScreenshotTest(
+                remoteCreationDisplayInfo =
+                    createCreationDisplayInfo(context, Size(size.toFloat(), size.toFloat()))
+            ) {
+                val dummyImage =
+                    rememberNamedRemoteImageBitmap(
+                        name = "dummy",
+                        url = "android.resource://androidx.compose.remote.foundation/drawable/dummy",
+                    )
+                RemoteImage(
+                    dummyImage,
+                    contentDescription = "background".rs,
+                    modifier = RemoteModifier.size(size.rdp),
+                    contentScale = ContentScale.Fit,
+                    alpha = DefaultAlpha.rf,
+                )
+            }
         }
     }
 

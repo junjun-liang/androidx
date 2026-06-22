@@ -27,12 +27,6 @@
             </intent-filter>
         </activity>
         <activity
-            android:name="androidx.xr.projected.testapp.componentpermissions.PermissionsComponentActivity"
-            android:exported="true"
-            android:label="Component Permission Activity"
-            android:requiredDisplayCategory="xr_projected">
-        </activity>
-        <activity
             android:name="androidx.xr.projected.testapp.permissions.PermissionsActivity"
             android:exported="true"
             android:label="Permission Activity"
@@ -76,6 +70,11 @@
             android:name="androidx.xr.projected.testapp.camera.CameraActivity"
             android:exported="true"
             android:label="Camera Activity">
+        </activity>
+        <activity
+            android:name="androidx.xr.projected.testapp.battery.BatteryActivity"
+            android:exported="true"
+            android:label="Battery Activity">
         </activity>
     </application>
 

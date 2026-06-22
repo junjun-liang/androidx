@@ -73,7 +73,7 @@ import androidx.xr.scenecore.MovableComponent
 import androidx.xr.scenecore.scene
 import androidx.xr.scenecore.testapp.accessibilitytest.AccessibilityTestActivity
 import androidx.xr.scenecore.testapp.activitypanel.ActivityPanelActivity
-import androidx.xr.scenecore.testapp.anchorentity.AnchorEntityActivity
+import androidx.xr.scenecore.testapp.anchorspace.AnchorSpaceActivity
 import androidx.xr.scenecore.testapp.common.managers.SessionManager
 import androidx.xr.scenecore.testapp.environment.EnvironmentActivity
 import androidx.xr.scenecore.testapp.fieldofviewvisibility.FieldOfViewVisibilityActivity
@@ -104,9 +104,7 @@ import androidx.xr.scenecore.testapp.ui.theme.IntegrationTestsAppTheme
 import androidx.xr.scenecore.testapp.visibility.VisibilityActivity
 import java.text.SimpleDateFormat
 import java.util.Locale
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
     private var session: Session? = null
@@ -116,8 +114,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        createSessionAndSetupUi()
-
         setContent {
             IntegrationTestsAppTheme {
                 Scaffold(
@@ -134,6 +130,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        createSessionAndSetupUi()
     }
 
     @Composable
@@ -311,7 +309,7 @@ class MainActivity : AppCompatActivity() {
     private fun createSessionAndSetupUi() {
         // Create the session in a separate thread to avoid StrictMode DiskRead Violations
         lifecycleScope.launch {
-            val createdSession = withContext(Dispatchers.IO) { sessionManager.createSession() }
+            val createdSession = sessionManager.createSession()
             if (createdSession == null) {
                 finish()
             } else {
@@ -341,7 +339,7 @@ class MainActivity : AppCompatActivity() {
         when (index) {
             Tests.ACTIVITY_PANEL_TEST.test -> startActivity(createIntent<ActivityPanelActivity>())
 
-            Tests.ANCHOR_TEST.test -> startActivity(createIntent<AnchorEntityActivity>())
+            Tests.ANCHOR_TEST.test -> startActivity(createIntent<AnchorSpaceActivity>())
 
             Tests.FIELD_OF_VIEW_VISIBILITY_TEST.test ->
                 startActivity(createIntent<FieldOfViewVisibilityActivity>())

@@ -52,7 +52,7 @@ import androidx.xr.compose.spatial.Subspace
 import androidx.xr.compose.subspace.SpatialPanel
 import androidx.xr.compose.subspace.layout.SpatialRoundedCornerShape
 import androidx.xr.compose.subspace.layout.SubspaceModifier
-import androidx.xr.compose.subspace.layout.transformingMovable
+import androidx.xr.compose.subspace.layout.movable
 import androidx.xr.runtime.Config
 import androidx.xr.runtime.DepthEstimationMode
 import androidx.xr.runtime.DeviceTrackingMode
@@ -85,15 +85,15 @@ class DepthActivity : ComponentActivity(), GLSurfaceView.Renderer {
     private var selectedDepthMode by mutableStateOf(DepthMode.RAW)
     private var selectedView by mutableStateOf(ViewSelection.LEFT)
     private val rawConfig =
-        Config(
-            depthEstimation = DepthEstimationMode.RAW_ONLY,
-            deviceTracking = DeviceTrackingMode.SPATIAL,
-        )
+        Config.Builder()
+            .setDepthEstimation(DepthEstimationMode.RAW_ONLY)
+            .setDeviceTracking(DeviceTrackingMode.SPATIAL)
+            .build()
     private val smoothConfig =
-        Config(
-            depthEstimation = DepthEstimationMode.SMOOTH_ONLY,
-            deviceTracking = DeviceTrackingMode.SPATIAL,
-        )
+        Config.Builder()
+            .setDepthEstimation(DepthEstimationMode.SMOOTH_ONLY)
+            .setDeviceTracking(DeviceTrackingMode.SPATIAL)
+            .build()
     private var configurationMutex = Mutex()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -123,7 +123,6 @@ class DepthActivity : ComponentActivity(), GLSurfaceView.Renderer {
                     surfaceView.setWillNotDraw(false)
                     setContent { DepthMapPanel(surfaceView) }
                 },
-                context = applicationContext,
             )
         sessionHelper.tryCreateSession()
     }
@@ -185,7 +184,7 @@ class DepthActivity : ComponentActivity(), GLSurfaceView.Renderer {
     @Composable
     fun DepthMapPanel(view: View) {
         Subspace {
-            SpatialPanel(modifier = SubspaceModifier.transformingMovable()) {
+            SpatialPanel(modifier = SubspaceModifier.movable()) {
                 AndroidView(
                     modifier = Modifier.width(1200.dp).height(1200.dp),
                     factory = { _ -> surfaceView },

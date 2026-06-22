@@ -16,7 +16,7 @@
 
 package androidx.compose.remote.testing
 
-import androidx.compose.remote.creation.compose.action.ValueChange
+import androidx.compose.remote.creation.compose.action.valueChange
 import androidx.compose.remote.creation.compose.capture.createCreationDisplayInfo
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteBox
@@ -28,6 +28,7 @@ import androidx.compose.remote.creation.compose.modifier.fillMaxSize
 import androidx.compose.remote.creation.compose.state.rc
 import androidx.compose.remote.creation.compose.state.rememberMutableRemoteString
 import androidx.compose.remote.creation.compose.state.rs
+import androidx.compose.remote.testing.util.GoldenScreenshotNameTestRule
 import androidx.compose.testutils.assertAgainstGolden
 import androidx.compose.ui.graphics.Color
 import androidx.test.filters.SdkSuppress
@@ -41,7 +42,9 @@ import org.junit.Test
 @SdkSuppress(minSdkVersion = 35, maxSdkVersion = 35)
 class RemoteContentTestRuleScreenshotTest {
     @get:Rule val remoteContentTestRule = RemoteContentTestRule()
-    @get:Rule val screenshotRule = AndroidXScreenshotTestRule("compose/remote/remote-testing")
+    @get:Rule val screenshotRule = AndroidXScreenshotTestRule(SCREENSHOT_GOLDEN_DIRECTORY)
+
+    @get:Rule val goldenScreenshotNameTestRule = GoldenScreenshotNameTestRule()
 
     @Test
     fun textValueChange() {
@@ -51,7 +54,7 @@ class RemoteContentTestRuleScreenshotTest {
             RemoteBox(
                 modifier =
                     RemoteModifier.fillMaxSize()
-                        .clickable(ValueChange(text, "Updated".rs))
+                        .clickable(valueChange(text, "Updated".rs))
                         .background(Color.White),
                 contentAlignment = RemoteAlignment.Center,
             ) {
@@ -62,7 +65,7 @@ class RemoteContentTestRuleScreenshotTest {
         val screenshotBefore = remoteContentTestRule.captureRootToImage()
         screenshotBefore.assertAgainstGolden(
             screenshotRule,
-            "RemoteContentTestRuleScreenshotTest_textValueChange_before",
+            goldenScreenshotNameTestRule.getName("before"),
         )
 
         uiAutomator {
@@ -76,7 +79,7 @@ class RemoteContentTestRuleScreenshotTest {
         val screenshotAfter = remoteContentTestRule.captureRootToImage()
         screenshotAfter.assertAgainstGolden(
             screenshotRule,
-            "RemoteContentTestRuleScreenshotTest_textValueChange_after",
+            goldenScreenshotNameTestRule.getName("after"),
         )
     }
 }

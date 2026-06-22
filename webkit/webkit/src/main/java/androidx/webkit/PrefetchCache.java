@@ -26,7 +26,7 @@ import androidx.annotation.RequiresFeature;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.UiThread;
 import androidx.webkit.internal.ApiFeature;
-import androidx.webkit.internal.PrefetchOperationCallbackAdapter;
+import androidx.webkit.internal.PrefetchOperationCallbackWithResultAdapter;
 import androidx.webkit.internal.SpeculativeLoadingParametersAdapter;
 import androidx.webkit.internal.WebViewFeatureInternal;
 
@@ -37,6 +37,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.lang.reflect.InvocationHandler;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 
 
@@ -69,14 +70,10 @@ public final class PrefetchCache {
      * This configuration will be applied to WebViews that are associated with the
      * {@link Profile} that owns this {@link PrefetchCache}.
      *
-     * <p>
-     * This method should only be called if
-     * {@link WebViewFeature#isFeatureSupported(String)} returns {@code true} for
-     * {@link WebViewFeature#PREFETCH_CACHE_V1}.
-     *
      * @param maxPrefetches the maximum number of prefetches to allow.
-     * @throws UnsupportedOperationException if the {@link WebViewFeature#PREFETCH_CACHE_V1}
-     *                                       feature is not supported.
+     * @throws UnsupportedOperationException if the
+     *     {@link WebViewFeature#PREFETCH_CACHE_V1} feature is not supported.
+     *     This should be checked before use with {@link WebViewFeature#isFeatureSupported}.
      */
     @RequiresFeature(name = WebViewFeature.PREFETCH_CACHE_V1,
             enforcement = "androidx.webkit.WebViewFeature#isFeatureSupported")
@@ -97,13 +94,10 @@ public final class PrefetchCache {
 
     /**
      * Returns maximum prefetches set for this Profile.
-     * <p>
-     * This method should only be called if
-     * {@link WebViewFeature#isFeatureSupported(String)} returns {@code true} for
-     * {@link WebViewFeature#PREFETCH_CACHE_V1}.
      *
-     * @throws UnsupportedOperationException if the {@link WebViewFeature#PREFETCH_CACHE_V1}
-     *                                       feature is not supported.
+     * @throws UnsupportedOperationException if the
+     *     {@link WebViewFeature#PREFETCH_CACHE_V1} feature is not supported.
+     *     This should be checked before use with {@link WebViewFeature#isFeatureSupported}.
      */
     @RequiresFeature(name = WebViewFeature.PREFETCH_CACHE_V1,
             enforcement = "androidx.webkit.WebViewFeature#isFeatureSupported")
@@ -127,13 +121,9 @@ public final class PrefetchCache {
      * This configuration will be applied to WebViews that are associated with the
      * {@link Profile} that owns this {@link PrefetchCache}.
      *
-     * <p>
-     * This method should only be called if
-     * {@link WebViewFeature#isFeatureSupported(String)} returns {@code true} for
-     * {@link WebViewFeature#PREFETCH_CACHE_V1}.
-     *
-     * @throws UnsupportedOperationException if the {@link WebViewFeature#PREFETCH_CACHE_V1}
-     *                                       feature is not supported.
+     * @throws UnsupportedOperationException if the
+     *     {@link WebViewFeature#PREFETCH_CACHE_V1} feature is not supported.
+     *     This should be checked before use with {@link WebViewFeature#isFeatureSupported}.
      */
     @RequiresFeature(name = WebViewFeature.PREFETCH_CACHE_V1,
             enforcement = "androidx.webkit.WebViewFeature#isFeatureSupported")
@@ -157,14 +147,10 @@ public final class PrefetchCache {
      * These configurations will be applied to WebViews that are associated with the
      * {@link Profile} that owns this {@link PrefetchCache}.
      *
-     * <p>
-     * This method should only be called if
-     * {@link WebViewFeature#isFeatureSupported(String)} returns {@code true} for
-     * {@link WebViewFeature#PREFETCH_CACHE_V1}.
-     *
      * @param prefetchTtlSeconds the TTL in seconds.
-     * @throws UnsupportedOperationException if the {@link WebViewFeature#PREFETCH_CACHE_V1}
-     *                                       feature is not supported.
+     * @throws UnsupportedOperationException if the
+     *     {@link WebViewFeature#PREFETCH_CACHE_V1} feature is not supported.
+     *     This should be checked before use with {@link WebViewFeature#isFeatureSupported}.
      */
     @RequiresFeature(name = WebViewFeature.PREFETCH_CACHE_V1,
             enforcement = "androidx.webkit.WebViewFeature#isFeatureSupported")
@@ -185,13 +171,10 @@ public final class PrefetchCache {
 
     /**
      * Returns Prefetch TTL in Seconds set for this Profile.
-     * <p>
-     * This method should only be called if
-     * {@link WebViewFeature#isFeatureSupported(String)} returns {@code true} for
-     * {@link WebViewFeature#PREFETCH_CACHE_V1}.
      *
-     * @throws UnsupportedOperationException if the {@link WebViewFeature#PREFETCH_CACHE_V1}
-     *                                       feature is not supported.
+     * @throws UnsupportedOperationException if the
+     *     {@link WebViewFeature#PREFETCH_CACHE_V1} feature is not supported.
+     *     This should be checked before use with {@link WebViewFeature#isFeatureSupported}.
      */
     @RequiresFeature(name = WebViewFeature.PREFETCH_CACHE_V1,
             enforcement = "androidx.webkit.WebViewFeature#isFeatureSupported")
@@ -216,13 +199,9 @@ public final class PrefetchCache {
      * This configuration will be applied to WebViews that are associated with the
      * {@link Profile} that owns this {@link PrefetchCache}.
      *
-     * <p>
-     * This method should only be called if
-     * {@link WebViewFeature#isFeatureSupported(String)} returns {@code true} for
-     * {@link WebViewFeature#PREFETCH_CACHE_V1}.
-     *
-     * @throws UnsupportedOperationException if the {@link WebViewFeature#PREFETCH_CACHE_V1}
-     *                                       feature is not supported.
+     * @throws UnsupportedOperationException if the
+     *     {@link WebViewFeature#PREFETCH_CACHE_V1} feature is not supported.
+     *     This should be checked before use with {@link WebViewFeature#isFeatureSupported}.
      */
     @RequiresFeature(name = WebViewFeature.PREFETCH_CACHE_V1,
             enforcement = "androidx.webkit.WebViewFeature#isFeatureSupported")
@@ -264,9 +243,9 @@ public final class PrefetchCache {
      * <p>
      * Only supports HTTPS scheme.
      * <p>
-     * This method should only be called if
-     * {@link WebViewFeature#isFeatureSupported(String)} returns {@code true} for
-     * {@link WebViewFeature#PROFILE_URL_PREFETCH}.
+     * On success, the {@code outcomeReceiver} will receive a {@link PrefetchResult}
+     * which can be used to check if the prefetch was a duplicate of an existing
+     * request via {@link PrefetchResult#wasDuplicate()}.
      *
      * @param url                the url associated with the prefetch request.
      * @param cancellationSignal will make the best effort to cancel an
@@ -276,8 +255,9 @@ public final class PrefetchCache {
      *                           the callback will be executed on the main thread.
      * @param outcomeReceiver    callbacks for reporting result back to application.
      * @throws IllegalArgumentException      if the url or callback is null.
-     * @throws UnsupportedOperationException if the {@link WebViewFeature#PROFILE_URL_PREFETCH}
-     *                                       feature is not supported.
+     * @throws UnsupportedOperationException if the
+     *     {@link WebViewFeature#PROFILE_URL_PREFETCH} feature is not supported.
+     *     This should be checked before use with {@link WebViewFeature#isFeatureSupported}.
      */
     @RequiresFeature(name = WebViewFeature.PROFILE_URL_PREFETCH,
             enforcement = "androidx.webkit.WebViewFeature#isFeatureSupported")
@@ -287,14 +267,23 @@ public final class PrefetchCache {
             @NonNull String url,
             @Nullable CancellationSignal cancellationSignal,
             @Nullable Executor callbackExecutor,
-            @NonNull WebViewOutcomeReceiver<@Nullable Void, PrefetchException> outcomeReceiver) {
+            @NonNull WebViewOutcomeReceiver<
+                    @NonNull PrefetchResult, PrefetchException> outcomeReceiver) {
+        Objects.requireNonNull(url, "Url can not be null.");
+        Objects.requireNonNull(outcomeReceiver, "OutcomeReceiver can not be null.");
+
         ApiFeature.NoFramework feature = WebViewFeatureInternal.PROFILE_URL_PREFETCH;
         if (feature.isSupportedByWebView()) {
             if (callbackExecutor == null) {
                 callbackExecutor = new Handler(Looper.getMainLooper())::post;
             }
-            mProfileImpl.prefetchUrl(url, cancellationSignal, callbackExecutor,
-                    PrefetchOperationCallbackAdapter.buildInvocationHandler(outcomeReceiver));
+            mProfileImpl.prefetchUrl(
+                    url,
+                    cancellationSignal,
+                    callbackExecutor,
+                    PrefetchOperationCallbackWithResultAdapter
+                            .buildInvocationHandler(outcomeReceiver)
+            );
         } else {
             throw WebViewFeatureInternal.getUnsupportedOperationException();
         }
@@ -326,9 +315,9 @@ public final class PrefetchCache {
      * <p>
      * Only supports HTTPS scheme.
      * <p>
-     * This method should only be called if
-     * {@link WebViewFeature#isFeatureSupported(String)} returns {@code true} for
-     * {@link WebViewFeature#PROFILE_URL_PREFETCH}.
+     * On success, the {@code outcomeReceiver} will receive a {@link PrefetchResult}
+     * which can be used to check if the prefetch was a duplicate of an existing
+     * request via {@link PrefetchResult#wasDuplicate()}.
      *
      * @param url                the url associated with the prefetch request.
      * @param cancellationSignal will make the best effort to cancel an
@@ -340,8 +329,9 @@ public final class PrefetchCache {
      * @param prefetchParameters parameters to customize the prefetch request.
      * @param outcomeReceiver    callbacks for reporting result back to application.
      * @throws IllegalArgumentException      if the url or callback is null.
-     * @throws UnsupportedOperationException if the {@link WebViewFeature#PROFILE_URL_PREFETCH}
-     *                                       feature is not supported.
+     * @throws UnsupportedOperationException if the
+     *     {@link WebViewFeature#PROFILE_URL_PREFETCH} feature is not supported.
+     *     This should be checked before use with {@link WebViewFeature#isFeatureSupported}.
      */
     @RequiresFeature(name = WebViewFeature.PROFILE_URL_PREFETCH,
             enforcement = "androidx.webkit.WebViewFeature#isFeatureSupported")
@@ -352,8 +342,13 @@ public final class PrefetchCache {
             @Nullable CancellationSignal cancellationSignal,
             @Nullable Executor callbackExecutor,
             @NonNull PrefetchParameters prefetchParameters,
-            @NonNull WebViewOutcomeReceiver<@Nullable Void, PrefetchException> outcomeReceiver) {
+            @NonNull WebViewOutcomeReceiver<
+                    @NonNull PrefetchResult, PrefetchException> outcomeReceiver) {
+        Objects.requireNonNull(url, "Url can not be null.");
+        Objects.requireNonNull(outcomeReceiver, "OutcomeReceiver can not be null.");
+
         ApiFeature.NoFramework feature = WebViewFeatureInternal.PROFILE_URL_PREFETCH;
+
         if (feature.isSupportedByWebView()) {
             if (callbackExecutor == null) {
                 callbackExecutor = new Handler(Looper.getMainLooper())::post;
@@ -366,9 +361,14 @@ public final class PrefetchCache {
                     BoundaryInterfaceReflectionUtil.createInvocationHandlerFor(
                             new SpeculativeLoadingParametersAdapter(params));
 
-            mProfileImpl.prefetchUrl(url, cancellationSignal, callbackExecutor,
+            mProfileImpl.prefetchUrl(
+                    url,
+                    cancellationSignal,
+                    callbackExecutor,
                     paramsBoundaryInterface,
-                    PrefetchOperationCallbackAdapter.buildInvocationHandler(outcomeReceiver));
+                    PrefetchOperationCallbackWithResultAdapter
+                            .buildInvocationHandler(outcomeReceiver)
+            );
 
         } else {
             throw WebViewFeatureInternal.getUnsupportedOperationException();

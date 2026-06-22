@@ -103,6 +103,7 @@ import com.google.android.icing.IcingSearchEngine;
 import com.google.android.icing.IcingSearchEngineInterface;
 import com.google.android.icing.proto.DebugInfoProto;
 import com.google.android.icing.proto.DebugInfoVerbosity;
+import com.google.android.icing.proto.DocumentGroupInfoProto;
 import com.google.android.icing.proto.DocumentProto;
 import com.google.android.icing.proto.GetOptimizeInfoResultProto;
 import com.google.android.icing.proto.GetSchemaResultProto;
@@ -12907,15 +12908,27 @@ public class AppSearchImplTest {
         assertThat(resultProto.getNextExpirationTimestampMs())
                 .isEqualTo(docCreationTimeMillis + 10000_000);
         String prefix = PrefixUtil.createPrefix("package", "database");
-        assertThat(resultProto.getDeletedDocumentsCount()).isEqualTo(2);
-        assertThat(resultProto.getDeletedDocuments(0).getSchema()).isEqualTo(prefix + "Person");
-        assertThat(resultProto.getDeletedDocuments(0).getNameSpace())
-                .isEqualTo(prefix + "namespace");
-        assertThat(resultProto.getDeletedDocuments(0).getUrisList()).containsExactly("Bob");
-        assertThat(resultProto.getDeletedDocuments(1).getSchema()).isEqualTo(prefix + "Email");
-        assertThat(resultProto.getDeletedDocuments(1).getNameSpace())
-                .isEqualTo(prefix + "namespace");
-        assertThat(resultProto.getDeletedDocuments(1).getUrisList()).containsExactly("email3");
+        assertThat(resultProto.getDeletedDocumentGroupInfo().getGroupsCount()).isEqualTo(2);
+
+        DocumentGroupInfoProto.GroupEntryProto personGroupEntry =
+                getDocumentGroupEntry(
+                        resultProto.getDeletedDocumentGroupInfo(),
+                        prefix + "Person",
+                        prefix + "namespace");
+        assertThat(personGroupEntry).isNotNull();
+        assertThat(personGroupEntry.getSchema()).isEqualTo(prefix + "Person");
+        assertThat(personGroupEntry.getNameSpace()).isEqualTo(prefix + "namespace");
+        assertThat(personGroupEntry.getUrisList()).containsExactly("Bob");
+
+        DocumentGroupInfoProto.GroupEntryProto emailGroupEntry =
+                getDocumentGroupEntry(
+                        resultProto.getDeletedDocumentGroupInfo(),
+                        prefix + "Email",
+                        prefix + "namespace");
+        assertThat(emailGroupEntry).isNotNull();
+        assertThat(emailGroupEntry.getSchema()).isEqualTo(prefix + "Email");
+        assertThat(emailGroupEntry.getNameSpace()).isEqualTo(prefix + "namespace");
+        assertThat(emailGroupEntry.getUrisList()).containsExactly("email3");
 
         // Verify email3 document is not retrievable.
         AppSearchException e =
@@ -13204,5 +13217,98 @@ public class AppSearchImplTest {
         PersistToDiskResultProto successPersist =
                 PersistToDiskResultProto.newBuilder().setStatus(OK).build();
         when(mMockIcingSearchEngine.persistToDisk(any())).thenReturn(successPersist);
+    }
+
+    private static DocumentGroupInfoProto.GroupEntryProto getDocumentGroupEntry(
+            DocumentGroupInfoProto documentGroupInfo, String schema, String namespace) {
+        for (DocumentGroupInfoProto.GroupEntryProto documentGroupEntry :
+                documentGroupInfo.getGroupsList()) {
+            if (documentGroupEntry.getSchema().equals(schema)
+                    && documentGroupEntry.getNameSpace().equals(namespace)) {
+                return documentGroupEntry;
+            }
+        }
+        return null;
+    }
+
+    @Test
+    @RequiresFlagsDisabled(Flags.FLAG_ENABLE_ACCOUNT_PROPERTY_INCOMPATIBILITY_CHECK)
+    @RequiresFlagsEnabled(Flags.FLAG_ENABLE_SCHEMAS_WIPEOUT_ACCOUNT_PROPERTY_PATHS)
+    public void testSetSchema_promoteToAccountProperty_compatible() throws Exception {
+        List<AppSearchSchema> schemas = ImmutableList.of(
+                new AppSearchSchema.Builder("Type")
+                        .addProperty(new AppSearchSchema.DocumentPropertyConfig.Builder("account",
+                                AppSearchAccount.SCHEMA_TYPE)
+                                .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
+                                .setShouldIndexNestedProperties(true)
+                                .build())
+                        .build(),
+                AppSearchAccount.SCHEMA);
+
+        mAppSearchImpl.setSchema(
+                "package",
+                "database1",
+                schemas,
+                /*visibilityConfigs=*/ Collections.emptyList(),
+                /*accountPropertyPaths=*/ ImmutableMap.of(),
+                /*forceOverride=*/ false,
+                /*version=*/ 0,
+                /*setSchemaStatsBuilder=*/ null,
+                /*callStatsBuilder=*/ null);
+
+        InternalSetSchemaResponse internalSetSchemaResponse = mAppSearchImpl.setSchema(
+                "package",
+                "database1",
+                schemas,
+                /*visibilityConfigs=*/ Collections.emptyList(),
+                /*accountPropertyPaths=*/ ImmutableMap.of("Type", Collections.singleton("account")),
+                /*forceOverride=*/ false,
+                /*version=*/ 0,
+                /*setSchemaStatsBuilder=*/ null,
+                /*callStatsBuilder=*/ null);
+
+        assertThat(internalSetSchemaResponse.isSuccess()).isTrue();
+        assertThat(internalSetSchemaResponse.getSetSchemaResponse().getIncompatibleTypes())
+                .isEmpty();
+    }
+
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_ENABLE_ACCOUNT_PROPERTY_INCOMPATIBILITY_CHECK)
+    public void testSetSchema_promoteToAccountProperty_incompatible() throws Exception {
+        List<AppSearchSchema> schemas = ImmutableList.of(
+                new AppSearchSchema.Builder("Type")
+                        .addProperty(new AppSearchSchema.DocumentPropertyConfig.Builder("account",
+                                AppSearchAccount.SCHEMA_TYPE)
+                                .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
+                                .setShouldIndexNestedProperties(true)
+                                .build())
+                        .build(),
+                AppSearchAccount.SCHEMA);
+
+        mAppSearchImpl.setSchema(
+                "package",
+                "database1",
+                schemas,
+                /*visibilityConfigs=*/ Collections.emptyList(),
+                /*accountPropertyPaths=*/ ImmutableMap.of(),
+                /*forceOverride=*/ false,
+                /*version=*/ 0,
+                /*setSchemaStatsBuilder=*/ null,
+                /*callStatsBuilder=*/ null);
+
+        InternalSetSchemaResponse internalSetSchemaResponse = mAppSearchImpl.setSchema(
+                "package",
+                "database1",
+                schemas,
+                /*visibilityConfigs=*/ Collections.emptyList(),
+                /*accountPropertyPaths=*/ ImmutableMap.of("Type", Collections.singleton("account")),
+                /*forceOverride=*/ false,
+                /*version=*/ 0,
+                /*setSchemaStatsBuilder=*/ null,
+                /*callStatsBuilder=*/ null);
+
+        assertThat(internalSetSchemaResponse.isSuccess()).isFalse();
+        assertThat(internalSetSchemaResponse.getSetSchemaResponse().getIncompatibleTypes())
+                .containsExactly("Type");
     }
 }

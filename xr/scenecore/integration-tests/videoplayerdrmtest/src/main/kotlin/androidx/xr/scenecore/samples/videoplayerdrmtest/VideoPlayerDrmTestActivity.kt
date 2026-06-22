@@ -84,10 +84,8 @@ import androidx.xr.scenecore.PanelEntity
 import androidx.xr.scenecore.SurfaceEntity
 import androidx.xr.scenecore.scene
 import java.io.File
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** Test app for integrated Drm functionality. */
 class VideoPlayerDrmTestActivity : ComponentActivity() {
@@ -118,23 +116,25 @@ class VideoPlayerDrmTestActivity : ComponentActivity() {
         Log.i(TAG, "onCreate")
 
         lifecycleScope.launch {
-            val session =
-                withContext(Dispatchers.IO) {
-                    (Session.create(context = this@VideoPlayerDrmTestActivity)
-                            as SessionCreateSuccess)
-                        .session
+            val sessionResult = Session.create(context = this@VideoPlayerDrmTestActivity)
+            if (sessionResult is SessionCreateSuccess) {
+                val session = sessionResult.session
+                session.configure(
+                    Config.Builder().setDeviceTracking(DeviceTrackingMode.SPATIAL).build()
+                )
+                session.scene.spatialEnvironment.preferredPassthroughOpacity = 0.0f
+
+                if (movableComponentMp == null) {
+                    movableComponentMp = MovableComponent.createSystemMovable(session)
+                    val unused = session.scene.mainPanelEntity.addComponent(movableComponentMp!!)
                 }
-            session.configure(Config(deviceTracking = DeviceTrackingMode.SPATIAL))
-            session.scene.spatialEnvironment.preferredPassthroughOpacity = 0.0f
 
-            if (movableComponentMp == null) {
-                movableComponentMp = MovableComponent.createSystemMovable(session)
-                val unused = session.scene.mainPanelEntity.addComponent(movableComponentMp!!)
+                setContent { BootstrapUi(session, activity) }
+
+                checkExternalStoragePermission()
+            } else {
+                finish()
             }
-
-            setContent { BootstrapUi(session, activity) }
-
-            checkExternalStoragePermission()
         }
     }
 
@@ -581,11 +581,11 @@ class VideoPlayerDrmTestActivity : ComponentActivity() {
                 Button(onClick = { togglePassthrough(session) }) {
                     Text(text = "Toggle Passthrough", fontSize = 30.sp)
                 }
-                Button(onClick = { session.scene.requestFullSpaceMode() }) {
-                    Text(text = "Request FSM", fontSize = 30.sp)
+                Button(onClick = { session.scene.requestFullSpace() }) {
+                    Text(text = "Request Full Space", fontSize = 30.sp)
                 }
-                Button(onClick = { session.scene.requestHomeSpaceMode() }) {
-                    Text(text = "Request HSM", fontSize = 30.sp)
+                Button(onClick = { session.scene.requestHomeSpace() }) {
+                    Text(text = "Request Home Space", fontSize = 30.sp)
                 }
                 Button(onClick = { ActivityCompat.recreate(activity) }) {
                     Text(text = "Recreate Activity", fontSize = 30.sp)

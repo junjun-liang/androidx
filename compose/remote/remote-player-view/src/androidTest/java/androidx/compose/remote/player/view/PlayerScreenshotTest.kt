@@ -29,6 +29,7 @@ import androidx.compose.remote.creation.modifiers.RecordingModifier
 import androidx.compose.remote.player.core.RemoteDocument
 import androidx.compose.remote.player.core.platform.AndroidRemoteContext
 import androidx.compose.remote.player.view.TestUtils.createDocument
+import androidx.compose.remote.testing.LimitsRule
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.captureToBitmap
 import androidx.test.espresso.matcher.ViewMatchers
@@ -57,6 +58,8 @@ class PlayerScreenshotTest {
     @get:Rule val activityScenarioRule = ActivityScenarioRule(ComponentActivity::class.java)
 
     @get:Rule val screenshotRule = AndroidXScreenshotTestRule(SCREENSHOT_GOLDEN_DIRECTORY)
+
+    @get:Rule val limitsRule = LimitsRule().enableImageUrls(true).enableImageFiles(true)
 
     private lateinit var playerView: RemoteComposePlayer
 

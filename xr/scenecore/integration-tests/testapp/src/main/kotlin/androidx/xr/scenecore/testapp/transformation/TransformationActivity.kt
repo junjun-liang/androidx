@@ -39,7 +39,7 @@ import androidx.xr.runtime.math.Pose
 import androidx.xr.runtime.math.Quaternion
 import androidx.xr.runtime.math.Vector3
 import androidx.xr.runtime.math.Vector3.Companion.distance
-import androidx.xr.scenecore.AnchorEntity
+import androidx.xr.scenecore.AnchorSpace
 import androidx.xr.scenecore.Entity
 import androidx.xr.scenecore.GltfModel
 import androidx.xr.scenecore.GltfModelEntity
@@ -73,7 +73,7 @@ class TransformationActivity : AppCompatActivity() {
     private var movableActive = MutableStateFlow(false)
     private lateinit var solarSystemEntityModel: GltfModel
     private lateinit var staticEntityModel: GltfModel
-    private var anchor: AnchorEntity? = null
+    private var anchor: AnchorSpace? = null
     private lateinit var sunEntity: GltfModelEntity
     private lateinit var planetEntity: GltfModelEntity
     private lateinit var moonEntity: GltfModelEntity
@@ -102,69 +102,79 @@ class TransformationActivity : AppCompatActivity() {
         }
 
         // Create session
-        session = SessionManager(this).createSession()
-        session!!.configure(Config(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL))
-        session?.scene?.keyEntity = session?.scene?.mainPanelEntity
-
-        // toolbar
-        findViewById<Toolbar>(R.id.topAppBar).also { toolbar ->
-            setSupportActionBar(toolbar)
-            toolbar.setNavigationOnClickListener { this@TransformationActivity.finish() }
-            toolbar.setTitle(R.string.cuj_transformation_test)
-        }
-
-        // Recreate button
-        findViewById<FloatingActionButton>(R.id.bottomCenterFab).also {
-            it.tooltipText = getString(R.string.fab_recreate_activity_tooltip)
-            it.setOnClickListener { ActivityCompat.recreate(this@TransformationActivity) }
-        }
-
-        // handle switches
-        findViewById<Switch>(R.id.switch_pause_animation).setOnCheckedChangeListener { _, isOn ->
-            pauseAnimation.value = isOn
-        }
-        findViewById<Switch>(R.id.switch_allow_panel_movement).setOnCheckedChangeListener { _, isOn
-            ->
-            switchMainPanelMovement(isOn)
-        }
 
         lifecycleScope.launch {
-            // Entity solar system
-            loadModels()
-            entitySolarSystem()
+            session = SessionManager(this@TransformationActivity).createSession()
+            session!!.configure(
+                Config.Builder().setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL).build()
+            )
+            session?.scene?.keyEntity = session?.scene?.mainPanelEntity
 
-            // Anchor
-            createAnchor()
+            // toolbar
+            findViewById<Toolbar>(R.id.topAppBar).also { toolbar ->
+                setSupportActionBar(toolbar)
+                toolbar.setNavigationOnClickListener { this@TransformationActivity.finish() }
+                toolbar.setTitle(R.string.cuj_transformation_test)
+            }
 
-            // Activity space debug panel
-            createActivitySpaceDebugPanel()
+            // Recreate button
+            findViewById<FloatingActionButton>(R.id.bottomCenterFab).also {
+                it.tooltipText = getString(R.string.fab_recreate_activity_tooltip)
+                it.setOnClickListener { ActivityCompat.recreate(this@TransformationActivity) }
+            }
 
-            repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                while (true) {
-                    val anchorState =
-                        anchor?.state ?: AnchorEntity.State.UNANCHORED // Handle null anchor
-                    for (panel in debugTextPanelsToUpdate) {
-                        if (panel.trackedEntity == null) continue // Skip if no tracked entity
-                        if (panel == anchorDebugPanel) {
-                            anchorDebugPanel.view.setLine("Anchor State", anchorState.toString())
+            // handle switches
+            findViewById<Switch>(R.id.switch_pause_animation).setOnCheckedChangeListener { _, isOn
+                ->
+                pauseAnimation.value = isOn
+            }
+            findViewById<Switch>(R.id.switch_allow_panel_movement).setOnCheckedChangeListener {
+                _,
+                isOn ->
+                switchMainPanelMovement(isOn)
+            }
+
+            lifecycleScope.launch {
+                // Entity solar system
+                loadModels()
+                entitySolarSystem()
+
+                // Anchor
+                createAnchor()
+
+                // Activity space debug panel
+                createActivitySpaceDebugPanel()
+
+                repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    while (true) {
+                        val anchorState =
+                            anchor?.state ?: AnchorSpace.State.UNANCHORED // Handle null anchor
+                        for (panel in debugTextPanelsToUpdate) {
+                            if (panel.trackedEntity == null) continue // Skip if no tracked entity
+                            if (panel == anchorDebugPanel) {
+                                anchorDebugPanel.view.setLine(
+                                    "Anchor State",
+                                    anchorState.toString(),
+                                )
+                            }
+                            updateDebugTextPanel(panel.view, panel.trackedEntity!!, anchorState)
                         }
-                        updateDebugTextPanel(panel.view, panel.trackedEntity!!, anchorState)
-                    }
-                    for (label in labelsToUpdate) {
-                        updateLabelPanelSize(
-                            label.labelPanel,
-                            label.trackedEntity,
-                            label.dimensions,
+                        for (label in labelsToUpdate) {
+                            updateLabelPanelSize(
+                                label.labelPanel,
+                                label.trackedEntity,
+                                label.dimensions,
+                            )
+                        }
+                        // Update main panel debug data
+                        updateDebugTextPanel(
+                            mainActivityDebugView,
+                            session!!.scene.mainPanelEntity,
+                            anchorState,
                         )
-                    }
-                    // Update main panel debug data
-                    updateDebugTextPanel(
-                        mainActivityDebugView,
-                        session!!.scene.mainPanelEntity,
-                        anchorState,
-                    )
 
-                    delay(100L.milliseconds)
+                        delay(100L.milliseconds)
+                    }
                 }
             }
         }
@@ -172,7 +182,7 @@ class TransformationActivity : AppCompatActivity() {
 
     private fun createAnchor() {
         anchor =
-            AnchorEntity.create(
+            AnchorSpace.create(
                 session!!,
                 FloatSize2d(0.1f, 0.1f),
                 PlaneOrientation.ALL,
@@ -251,7 +261,7 @@ class TransformationActivity : AppCompatActivity() {
     private fun updateDebugTextPanel(
         view: DebugTextLinearView,
         trackedEntity: Entity,
-        anchorState: AnchorEntity.State,
+        anchorState: AnchorSpace.State,
     ) {
         // Need to handle IllegalArgumentException from the anchorEntity's getPose
         val localPose =
@@ -283,7 +293,7 @@ class TransformationActivity : AppCompatActivity() {
         view.setLine("MainPanelSpacePose", mainPanelSpacePose.toFormattedString())
 
         val trackedEntityWorldPos = trackedEntity.getPose(Space.REAL_WORLD).translation
-        if (anchor != null && anchorState == AnchorEntity.State.ANCHORED) {
+        if (anchor != null && anchorState == AnchorSpace.State.ANCHORED) {
             val anchorSpacePose = trackedEntity.transformPoseTo(Pose.Identity, anchor!!)
             view.setLine("AnchorSpacePose", anchorSpacePose.toFormattedString())
             val anchorWorldPos = anchor!!.getPose(Space.REAL_WORLD).translation

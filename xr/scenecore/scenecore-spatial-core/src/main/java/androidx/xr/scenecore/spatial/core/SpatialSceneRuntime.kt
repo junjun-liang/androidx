@@ -32,6 +32,7 @@ import androidx.annotation.RestrictTo
 import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.LifecycleOwner
 import androidx.xr.arcore.Trackable
+import androidx.xr.runtime.Config
 import androidx.xr.runtime.math.Pose
 import androidx.xr.scenecore.runtime.ActivityPanelEntity
 import androidx.xr.scenecore.runtime.AnchorEntity
@@ -78,8 +79,8 @@ import androidx.xr.scenecore.runtime.SurfaceEntity
 import androidx.xr.scenecore.runtime.SurfaceFeature
 import androidx.xr.scenecore.runtime.TrackableComponent
 import androidx.xr.scenecore.runtime.TypeHolder
-import androidx.xr.scenecore.runtime.impl.OpenXrScenePose
 import androidx.xr.scenecore.runtime.impl.PerceptionSpaceScenePoseImpl
+import androidx.xr.scenecore.runtime.impl.PlatformReferenceScenePose
 import androidx.xr.scenecore.spatial.core.RuntimeUtils.convertPerceivedResolution
 import androidx.xr.scenecore.spatial.core.RuntimeUtils.convertSpatialCapabilities
 import androidx.xr.scenecore.spatial.core.RuntimeUtils.convertSpatialVisibility
@@ -196,6 +197,9 @@ private constructor(
             }
         }
 
+    override var config: Config = Config.Builder().build()
+        private set
+
     init {
         this.activity = activity
 
@@ -238,6 +242,10 @@ private constructor(
         spatialApiVersion = SpatialCoreApiVersionProvider().spatialApiVersion
     }
 
+    override fun configure(config: Config) {
+        this.config = config
+    }
+
     override fun destroy() {
         if (isDestroyed) {
             return
@@ -268,7 +276,7 @@ private constructor(
     }
 
     override fun getScenePoseFromPerceptionPose(pose: Pose): ScenePose {
-        return OpenXrScenePose(activitySpace, pose)
+        return PlatformReferenceScenePose(activitySpace, pose)
     }
 
     override fun createPanelEntity(
@@ -470,11 +478,6 @@ private constructor(
         entity.parent = parent
         entity.setPose(pose, Space.PARENT)
         return entity
-    }
-
-    @Deprecated("Use createEntity instead.")
-    override fun createGroupEntity(pose: Pose, name: String, parent: Entity?): Entity {
-        return createEntity(pose, name, parent)
     }
 
     override fun createLoggingEntity(pose: Pose): LoggingEntity {

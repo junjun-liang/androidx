@@ -26,6 +26,7 @@ import androidx.xr.runtime.Session
 import androidx.xr.runtime.SessionCreateSuccess
 import androidx.xr.scenecore.testing.SceneCoreTestRule
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Before
 import org.junit.Rule
@@ -47,7 +48,7 @@ class SoundEffectPoolTest {
     private lateinit var session: Session
 
     @Before
-    fun setUp() {
+    fun setUp(): Unit = runBlocking {
         activity = Robolectric.buildActivity(ComponentActivity::class.java).create().start().get()
         val testDispatcher = StandardTestDispatcher()
         val result =
@@ -124,34 +125,6 @@ class SoundEffectPoolTest {
         // This indirectly confirms that the underlying fake has been released.
         assertThat(soundEffectPoolTester.isResourceLoaded(resId)).isFalse()
         assertThat(soundEffectPoolTester.isAssetLoaded(afd)).isFalse()
-    }
-
-    // TODO - b/502272748: Remove when we delete the deprecated setListener method
-    @Test
-    fun setOnLoadCompleteListener_receivesCallback() {
-        val soundEffectPool = SoundEffectPool.create(session, 1)
-        val tester = scenecoreTestRule.createTester(soundEffectPool)
-        var callbackCalled = false
-        var loadedSoundEffect: SoundEffect? = null
-        var loadedSuccess = false
-
-        val listener =
-            SoundEffectPool.LoadCompleteListener { soundEffect, success ->
-                callbackCalled = true
-                loadedSoundEffect = soundEffect
-                loadedSuccess = success
-            }
-
-        soundEffectPool.setOnLoadCompleteListener(listener)
-
-        // Trigger the listener via the tester
-        val soundEffect = SoundEffect(123)
-        tester.triggerLoadCompleteListener(soundEffect, true)
-        shadowOf(Looper.getMainLooper()).idle()
-
-        assertThat(callbackCalled).isTrue()
-        assertThat(loadedSoundEffect?.id).isEqualTo(123)
-        assertThat(loadedSuccess).isTrue()
     }
 
     @Test

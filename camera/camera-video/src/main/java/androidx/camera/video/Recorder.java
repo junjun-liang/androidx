@@ -844,6 +844,14 @@ public final class Recorder implements VideoOutput {
         return getObservableData(mMediaSpec).getVideoSpec().getQualitySelector();
     }
 
+    /**
+     * Gets the muxer factory of this Recorder.
+     */
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    public @NonNull MuxerFactory getMuxerFactory() {
+        return mMuxerFactory;
+    }
+
     @Override
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     public boolean isQualitySelectorDefault() {
@@ -2533,7 +2541,9 @@ public final class Recorder implements VideoOutput {
             // the encoder when the source has actually stopped in the FutureCallback.
             // If the recording is explicitly stopped by the user, pass the stop timestamp to the
             // encoder so that the encoding can be stop as close as to the actual stop time.
-            mVideoEncoder.stop(explicitlyStopTime);
+            if (mVideoEncoder != null) {
+                mVideoEncoder.stop(explicitlyStopTime);
+            }
         }
     }
 
@@ -4018,7 +4028,7 @@ public final class Recorder implements VideoOutput {
         }
 
         /** Sets the {@link MuxerFactory} of this Recorder. */
-        @RestrictTo(RestrictTo.Scope.LIBRARY)
+        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
         public @NonNull Builder setMuxerFactory(@NonNull MuxerFactory muxerFactory) {
             mMuxerFactory = muxerFactory;
             return this;

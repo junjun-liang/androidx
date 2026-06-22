@@ -16,6 +16,7 @@
 
 package androidx.wear.compose.remote.integration.demos.components
 
+import android.content.Context
 import androidx.compose.remote.core.CoreDocument
 import androidx.compose.remote.core.Operations
 import androidx.compose.remote.core.RcProfiles
@@ -30,10 +31,15 @@ import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 import androidx.compose.remote.creation.compose.modifier.fillMaxWidth
 import androidx.compose.remote.creation.compose.modifier.padding
 import androidx.compose.remote.creation.compose.state.rdp
+import androidx.compose.remote.creation.compose.text.RemoteFontFamily
 import androidx.compose.remote.creation.platform.AndroidxRcPlatformServices
 import androidx.compose.remote.creation.profile.Profile
 import androidx.compose.remote.player.compose.RemoteDocumentPlayer
+import androidx.compose.remote.player.compose.test.utils.DownloadableTypefaceResolver
+import androidx.compose.remote.player.compose.test.utils.FallbackCreateTypefaceResolver
+import androidx.compose.remote.player.compose.test.utils.RemappingTypefaceResolver
 import androidx.compose.remote.player.core.RemoteDocument
+import androidx.compose.remote.player.core.platform.TypefaceResolver
 import androidx.compose.remote.player.view.RemoteComposePlayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,8 +61,10 @@ import androidx.wear.compose.material3.ListSubHeader
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.dynamicColorScheme
 import androidx.wear.compose.remote.material3.RemoteMaterialTheme
+import androidx.wear.compose.remote.material3.RemoteTypography
 
 internal val LocalUseDynamicColor = compositionLocalOf { true }
+internal val LocalSelectedFontFamilyName = compositionLocalOf { "Default" }
 
 @Suppress("RestrictedApiAndroidX")
 private val profileFeaturePaintMeasureDisabled =
@@ -84,9 +92,10 @@ fun RemoteDemoItem(
     documentWidth: Int? = null,
     documentHeight: Int? = null,
     useDynamicColor: Boolean = LocalUseDynamicColor.current,
+    selectedFontName: String = LocalSelectedFontFamilyName.current,
     content: @Composable @RemoteComposable () -> Unit,
 ) {
-    var documentState by remember { mutableStateOf<RemoteDocument?>(null) }
+    var documentState by remember(selectedFontName) { mutableStateOf<RemoteDocument?>(null) }
 
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -96,13 +105,20 @@ fun RemoteDemoItem(
         } else {
             null
         }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(selectedFontName) {
         val captured =
             captureSingleRemoteDocument(
                 context = context,
                 profile = profileFeaturePaintMeasureDisabled,
             ) {
-                RemoteMaterialTheme {
+                val selectedFontFamily =
+                    if (selectedFontName == "Default") {
+                        RemoteFontFamily.Default
+                    } else {
+                        RemoteFontFamily.Named("google:$selectedFontName")
+                    }
+                val typography = RemoteTypography(defaultFontFamily = selectedFontFamily)
+                RemoteMaterialTheme(typography = typography) {
                     RemoteBox(
                         modifier = RemoteModifier.fillMaxWidth().padding(8.rdp),
                         contentAlignment = RemoteAlignment.Center,
@@ -126,8 +142,17 @@ fun RemoteDemoItem(
             debugMode = 0,
             update = { player -> setDynamicColors(dynamicColors, player) },
             onNamedAction = { _, _, _ -> },
+            typefaceResolver = configureTypefaceResolver(context),
         )
     }
+}
+
+@Suppress("RestrictedApiAndroidX")
+private fun configureTypefaceResolver(context: Context): TypefaceResolver {
+    val current = FallbackCreateTypefaceResolver()
+    val remappingResolver = RemappingTypefaceResolver(current).apply { remapType(0, "roboto-flex") }
+    val downloadableResolver = DownloadableTypefaceResolver(context, remappingResolver)
+    return downloadableResolver
 }
 
 @Suppress("RestrictedApiAndroidX")

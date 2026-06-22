@@ -54,6 +54,13 @@ internal class PdfViewExternalInputManager(pdfView: PdfView) {
                 }
                 false
             }
+            KeyEvent.KEYCODE_A -> {
+                if (event.isCtrlPressed) {
+                    keyboardActionHandler.selectAllText()
+                    return true
+                }
+                false
+            }
             KeyEvent.KEYCODE_C -> {
                 if (event.isCtrlPressed) {
                     keyboardActionHandler.copySelection()
@@ -77,15 +84,20 @@ internal class PdfViewExternalInputManager(pdfView: PdfView) {
                 keyboardActionHandler.scrollUp()
                 true
             }
+            KeyEvent.KEYCODE_ESCAPE -> {
+                keyboardActionHandler.clearSelection()
+            }
             KeyEvent.KEYCODE_EQUALS,
-            KeyEvent.KEYCODE_PLUS -> {
+            KeyEvent.KEYCODE_PLUS,
+            KeyEvent.KEYCODE_NUMPAD_ADD -> {
                 if (event.isCtrlPressed) {
                     keyboardActionHandler.zoomIn()
                     return true
                 }
                 false
             }
-            KeyEvent.KEYCODE_MINUS -> {
+            KeyEvent.KEYCODE_MINUS,
+            KeyEvent.KEYCODE_NUMPAD_SUBTRACT -> {
                 if (event.isCtrlPressed) {
                     keyboardActionHandler.zoomOut()
                     return true

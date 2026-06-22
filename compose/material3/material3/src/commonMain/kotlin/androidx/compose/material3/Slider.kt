@@ -292,7 +292,7 @@ fun Slider(
     colors: SliderColors = SliderDefaults.colors(),
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     @IntRange(from = 0) steps: Int = 0,
-    thumb: @Composable (SliderState) -> Unit = {
+    thumb: @Composable (SliderState) -> Unit = { _ ->
         SliderDefaults.Thumb(
             interactionSource = interactionSource,
             colors = colors,
@@ -379,7 +379,7 @@ fun Slider(
     enabled: Boolean = true,
     colors: SliderColors = SliderDefaults.colors(),
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
-    thumb: @Composable (SliderState) -> Unit = {
+    thumb: @Composable (SliderState) -> Unit = { _ ->
         SliderDefaults.Thumb(
             interactionSource = interactionSource,
             colors = colors,
@@ -437,19 +437,97 @@ fun Slider(
  * @param track the track to be displayed on the slider, it is placed underneath the thumb. The
  *   lambda receives a [SliderState] which is used to obtain the current active track.
  */
-@ExperimentalMaterial3ExpressiveApi
+@Deprecated(
+    "Maintained for binary compatibility. Use the version with topToBottom instead.",
+    level = DeprecationLevel.HIDDEN,
+)
+@JvmName("VerticalSlider")
 @Composable
-fun VerticalSlider(
+fun VerticalSliderLegacy(
     state: SliderState,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     reverseDirection: Boolean = false,
     colors: SliderColors = SliderDefaults.colors(),
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
-    thumb: @Composable (SliderState) -> Unit = { sliderState ->
+    thumb: @Composable (SliderState) -> Unit = { _ ->
         SliderDefaults.Thumb(
             interactionSource = interactionSource,
+            isVertical = true,
+            colors = colors,
+            enabled = enabled,
+            thumbSize = VerticalThumbSize,
+        )
+    },
+    track: @Composable (SliderState) -> Unit = { sliderState ->
+        SliderDefaults.Track(
+            colors = colors,
+            enabled = enabled,
             sliderState = sliderState,
+            trackCornerSize = Dp.Unspecified,
+        )
+    },
+) =
+    VerticalSlider(
+        state = state,
+        modifier = modifier,
+        enabled = enabled,
+        topToBottom = !reverseDirection,
+        colors = colors,
+        interactionSource = interactionSource,
+        thumb = thumb,
+        track = track,
+    )
+
+/**
+ * [Material Design slider](https://m3.material.io/components/sliders/overview)
+ *
+ * Vertical Sliders allow users to make selections from a range of values.
+ *
+ * Vertical Sliders reflect a range of values along a vertical bar, from which users may select a
+ * single value. They are ideal for adjusting settings such as volume, brightness, or applying image
+ * filters.
+ *
+ * ![Sliders
+ * image](https://firebasestorage.googleapis.com/v0/b/design-spec/o/projects%2Fgoogle-material-3%2Fimages%2Flqe2zb2b-1.png?alt=media)
+ *
+ * Vertical Slider:
+ *
+ * @sample androidx.compose.material3.samples.VerticalSliderSample
+ *
+ * Vertical Slider with a centered track:
+ *
+ * @sample androidx.compose.material3.samples.VerticalCenteredSliderSample
+ * @param state [SliderState] which contains the slider's current value.
+ * @param modifier the [Modifier] to be applied to this slider
+ * @param enabled controls the enabled state of this slider. When `false`, this component will not
+ *   respond to user input, and it will appear visually disabled and disabled to accessibility
+ *   services.
+ * @param topToBottom controls the direction of this slider. Default is true, indicating that this
+ *   vertical slider should be top to bottom. Pass in false, if you want it to behave bottom to top.
+ * @param colors [SliderColors] that will be used to resolve the colors used for this slider in
+ *   different states. See [SliderDefaults.colors].
+ * @param interactionSource the [MutableInteractionSource] representing the stream of [Interaction]s
+ *   for this slider. You can create and pass in your own `remember`ed instance to observe
+ *   [Interaction]s and customize the appearance / behavior of this slider in different states.
+ * @param thumb the thumb to be displayed on the slider, it is placed on top of the track. The
+ *   lambda receives a [SliderState] which is used to obtain the current active track.
+ * @param track the track to be displayed on the slider, it is placed underneath the thumb. The
+ *   lambda receives a [SliderState] which is used to obtain the current active track.
+ */
+@JvmName("VerticalSliderNew")
+@Composable
+fun VerticalSlider(
+    state: SliderState,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    topToBottom: Boolean = true,
+    colors: SliderColors = SliderDefaults.colors(),
+    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    thumb: @Composable (SliderState) -> Unit = { _ ->
+        SliderDefaults.Thumb(
+            interactionSource = interactionSource,
+            isVertical = true,
             colors = colors,
             enabled = enabled,
             thumbSize = VerticalThumbSize,
@@ -467,7 +545,7 @@ fun VerticalSlider(
     require(state.steps >= 0) { "steps should be >= 0" }
 
     state.orientation = Vertical
-    state.reverseVerticalDirection = reverseDirection
+    state.reverseVerticalDirection = !topToBottom
 
     SliderImpl(
         state = state,
@@ -978,29 +1056,33 @@ private fun Modifier.slideOnKeyEvents(
                 val delta = rangeLength / actualSteps
                 val sign = if (reverseDirection) -1 else 1
 
-                if (it.key == Key.MoveHome) {
+                if ((it.key == Key.MoveHome) || (it.key == Key.NumPadMoveHome)) {
                     onValueChangeState(valueRange.start)
                     return@onKeyEvent true
-                } else if (it.key == Key.MoveEnd) {
+                } else if ((it.key == Key.MoveEnd) || (it.key == Key.NumPadMoveEnd)) {
                     onValueChangeState(valueRange.endInclusive)
                     return@onKeyEvent true
                 }
                 if (isVertical) {
                     when (it.key) {
-                        Key.DirectionUp -> {
+                        Key.DirectionUp,
+                        Key.NumPadDirectionUp -> {
                             onValueChangeState((value - sign * delta).coerceIn(valueRange))
                             return@onKeyEvent true
                         }
-                        Key.DirectionDown -> {
+                        Key.DirectionDown,
+                        Key.NumPadDirectionDown -> {
                             onValueChangeState((value + sign * delta).coerceIn(valueRange))
                             return@onKeyEvent true
                         }
-                        Key.PageUp -> {
+                        Key.PageUp,
+                        Key.NumPadPageUp -> {
                             val page = (actualSteps / 10).coerceIn(1, 10)
                             onValueChangeState((value - page * sign * delta).coerceIn(valueRange))
                             return@onKeyEvent true
                         }
-                        Key.PageDown -> {
+                        Key.PageDown,
+                        Key.NumPadPageDown -> {
                             val page = (actualSteps / 10).coerceIn(1, 10)
                             onValueChangeState((value + page * sign * delta).coerceIn(valueRange))
                             return@onKeyEvent true
@@ -1009,20 +1091,24 @@ private fun Modifier.slideOnKeyEvents(
                     }
                 } else {
                     when (it.key) {
-                        Key.DirectionRight -> {
+                        Key.DirectionRight,
+                        Key.NumPadDirectionRight -> {
                             onValueChangeState((value + sign * delta).coerceIn(valueRange))
                             return@onKeyEvent true
                         }
-                        Key.DirectionLeft -> {
+                        Key.DirectionLeft,
+                        Key.NumPadDirectionLeft -> {
                             onValueChangeState((value - sign * delta).coerceIn(valueRange))
                             return@onKeyEvent true
                         }
-                        Key.PageUp -> {
+                        Key.PageUp,
+                        Key.NumPadPageUp -> {
                             val page = (actualSteps / 10).coerceIn(1, 10)
                             onValueChangeState((value + page * delta).coerceIn(valueRange))
                             return@onKeyEvent true
                         }
-                        Key.PageDown -> {
+                        Key.PageDown,
+                        Key.NumPadPageDown -> {
                             val page = (actualSteps / 10).coerceIn(1, 10)
                             onValueChangeState((value - page * delta).coerceIn(valueRange))
                             return@onKeyEvent true
@@ -1036,11 +1122,17 @@ private fun Modifier.slideOnKeyEvents(
                 if (isVertical) {
                     when (it.key) {
                         Key.DirectionUp,
+                        Key.NumPadDirectionUp,
                         Key.DirectionDown,
+                        Key.NumPadDirectionDown,
                         Key.MoveHome,
+                        Key.NumPadMoveHome,
                         Key.MoveEnd,
+                        Key.NumPadMoveEnd,
                         Key.PageUp,
-                        Key.PageDown -> {
+                        Key.NumPadPageUp,
+                        Key.PageDown,
+                        Key.NumPadPageDown -> {
                             onValueChangeFinishedState?.invoke()
                             return@onKeyEvent true
                         }
@@ -1049,11 +1141,17 @@ private fun Modifier.slideOnKeyEvents(
                 } else {
                     when (it.key) {
                         Key.DirectionRight,
+                        Key.NumPadDirectionRight,
                         Key.DirectionLeft,
+                        Key.NumPadDirectionLeft,
                         Key.MoveHome,
+                        Key.NumPadMoveHome,
                         Key.MoveEnd,
+                        Key.NumPadMoveEnd,
                         Key.PageUp,
-                        Key.PageDown -> {
+                        Key.NumPadPageUp,
+                        Key.PageDown,
+                        Key.NumPadPageDown -> {
                             onValueChangeFinishedState?.invoke()
                             return@onKeyEvent true
                         }
@@ -1095,7 +1193,8 @@ private fun Modifier.rangeSliderOnKeyEvents(
                 if (isStartThumb) {
                     val coerceInRange = valueRange.start..valueEnd
                     when (it.key) {
-                        Key.DirectionRight -> {
+                        Key.DirectionRight,
+                        Key.NumPadDirectionRight -> {
                             onValueChangeState(
                                 SliderRange(
                                     (valueStart + sign * delta).coerceIn(coerceInRange),
@@ -1105,7 +1204,8 @@ private fun Modifier.rangeSliderOnKeyEvents(
                             return@onKeyEvent true
                         }
 
-                        Key.DirectionLeft -> {
+                        Key.DirectionLeft,
+                        Key.NumPadDirectionLeft -> {
                             onValueChangeState(
                                 SliderRange(
                                     (valueStart - sign * delta).coerceIn(coerceInRange),
@@ -1115,7 +1215,8 @@ private fun Modifier.rangeSliderOnKeyEvents(
                             return@onKeyEvent true
                         }
 
-                        Key.PageUp -> {
+                        Key.PageUp,
+                        Key.NumPadPageUp -> {
                             val page = (actualSteps / 10).coerceIn(1, 10)
                             onValueChangeState(
                                 SliderRange(
@@ -1126,7 +1227,8 @@ private fun Modifier.rangeSliderOnKeyEvents(
                             return@onKeyEvent true
                         }
 
-                        Key.PageDown -> {
+                        Key.PageDown,
+                        Key.NumPadPageDown -> {
                             val page = (actualSteps / 10).coerceIn(1, 10)
                             onValueChangeState(
                                 SliderRange(
@@ -1137,12 +1239,14 @@ private fun Modifier.rangeSliderOnKeyEvents(
                             return@onKeyEvent true
                         }
 
-                        Key.MoveHome -> {
+                        Key.MoveHome,
+                        Key.NumPadMoveHome -> {
                             onValueChangeState(SliderRange(valueRange.start, valueEnd))
                             return@onKeyEvent true
                         }
 
-                        Key.MoveEnd -> {
+                        Key.MoveEnd,
+                        Key.NumPadMoveEnd -> {
                             onValueChangeState(SliderRange(valueEnd, valueEnd))
                             return@onKeyEvent true
                         }
@@ -1152,7 +1256,8 @@ private fun Modifier.rangeSliderOnKeyEvents(
                 } else {
                     val coerceInRange = valueStart..valueRange.endInclusive
                     when (it.key) {
-                        Key.DirectionRight -> {
+                        Key.DirectionRight,
+                        Key.NumPadDirectionRight -> {
                             onValueChangeState(
                                 SliderRange(
                                     valueStart,
@@ -1163,7 +1268,8 @@ private fun Modifier.rangeSliderOnKeyEvents(
                             return@onKeyEvent true
                         }
 
-                        Key.DirectionLeft -> {
+                        Key.DirectionLeft,
+                        Key.NumPadDirectionLeft -> {
                             onValueChangeState(
                                 SliderRange(
                                     valueStart,
@@ -1174,7 +1280,8 @@ private fun Modifier.rangeSliderOnKeyEvents(
                             return@onKeyEvent true
                         }
 
-                        Key.PageUp -> {
+                        Key.PageUp,
+                        Key.NumPadPageUp -> {
                             val page = (actualSteps / 10).coerceIn(1, 10)
                             onValueChangeState(
                                 SliderRange(
@@ -1185,7 +1292,8 @@ private fun Modifier.rangeSliderOnKeyEvents(
                             return@onKeyEvent true
                         }
 
-                        Key.PageDown -> {
+                        Key.PageDown,
+                        Key.NumPadPageDown -> {
                             val page = (actualSteps / 10).coerceIn(1, 10)
                             onValueChangeState(
                                 SliderRange(
@@ -1196,12 +1304,14 @@ private fun Modifier.rangeSliderOnKeyEvents(
                             return@onKeyEvent true
                         }
 
-                        Key.MoveHome -> {
+                        Key.MoveHome,
+                        Key.NumPadMoveHome -> {
                             onValueChangeState(SliderRange(valueStart, valueStart))
                             return@onKeyEvent true
                         }
 
-                        Key.MoveEnd -> {
+                        Key.MoveEnd,
+                        Key.NumPadMoveEnd -> {
                             onValueChangeState(SliderRange(valueStart, valueRange.endInclusive))
                             return@onKeyEvent true
                         }
@@ -1214,11 +1324,17 @@ private fun Modifier.rangeSliderOnKeyEvents(
             KeyEventType.KeyUp -> {
                 when (it.key) {
                     Key.DirectionRight,
+                    Key.NumPadDirectionRight,
                     Key.DirectionLeft,
+                    Key.NumPadDirectionLeft,
                     Key.MoveHome,
+                    Key.NumPadMoveHome,
                     Key.MoveEnd,
+                    Key.NumPadMoveEnd,
                     Key.PageUp,
-                    Key.PageDown -> {
+                    Key.NumPadPageUp,
+                    Key.PageDown,
+                    Key.NumPadPageDown -> {
                         onValueChangeFinishedState?.invoke()
                         return@onKeyEvent true
                     }
@@ -1619,6 +1735,7 @@ object SliderDefaults {
      *   accessibility services.
      * @param thumbSize the size of the thumb.
      */
+    @Deprecated("Maintained for binary compatibility.", level = DeprecationLevel.HIDDEN)
     @ExperimentalMaterial3ExpressiveApi
     @Composable
     fun Thumb(
@@ -1631,11 +1748,44 @@ object SliderDefaults {
     ) =
         Thumb(
             interactionSource = interactionSource,
+            isVertical = sliderState.orientation == Vertical,
             modifier = modifier,
             colors = colors,
             enabled = enabled,
             thumbSize = thumbSize,
-            isVertical = sliderState.orientation == Vertical,
+        )
+
+    /**
+     * The Default thumb for [Slider], [VerticalSlider] and [RangeSlider]
+     *
+     * @param interactionSource the [MutableInteractionSource] representing the stream of
+     *   [Interaction]s for this thumb. You can create and pass in your own `remember`ed instance to
+     *   observe
+     * @param isVertical whether the slider that this thumb is being used in is a [VerticalSlider].
+     * @param modifier the [Modifier] to be applied to the thumb.
+     * @param colors [SliderColors] that will be used to resolve the colors used for this thumb in
+     *   different states. See [SliderDefaults.colors].
+     * @param enabled controls the enabled state of this slider. When `false`, this component will
+     *   not respond to user input, and it will appear visually disabled and disabled to
+     *   accessibility services.
+     * @param thumbSize the size of the thumb.
+     */
+    @Composable
+    fun Thumb(
+        interactionSource: MutableInteractionSource,
+        isVertical: Boolean,
+        modifier: Modifier = Modifier,
+        colors: SliderColors = colors(),
+        enabled: Boolean = true,
+        thumbSize: DpSize = if (isVertical) VerticalThumbSize else ThumbSize,
+    ) =
+        ThumbContent(
+            interactionSource = interactionSource,
+            modifier = modifier,
+            colors = colors,
+            enabled = enabled,
+            thumbSize = thumbSize,
+            isVertical = isVertical,
         )
 
     /**
@@ -1780,7 +1930,6 @@ object SliderDefaults {
      * @param thumbTrackGapSize size of the gap between the thumb and the track.
      * @param trackInsideCornerSize size of the corners towards the thumb when a gap is set.
      */
-    @ExperimentalMaterial3ExpressiveApi
     @Composable
     fun Track(
         sliderState: SliderState,
@@ -1835,7 +1984,6 @@ object SliderDefaults {
      * @param trackInsideCornerSize size of the corners towards the thumb when a gap is set.
      * @param trackCornerSize size of the external corners.
      */
-    @ExperimentalMaterial3ExpressiveApi
     @Composable
     fun CenteredTrack(
         sliderState: SliderState,
@@ -2091,7 +2239,6 @@ object SliderDefaults {
      * @param thumbTrackGapSize size of the gap between the thumbs and the track.
      * @param trackInsideCornerSize size of the corners towards the thumbs when a gap is set.
      */
-    @ExperimentalMaterial3ExpressiveApi
     @Composable
     fun Track(
         rangeSliderState: RangeSliderState,
@@ -2518,7 +2665,7 @@ object SliderDefaults {
 }
 
 @Composable
-private fun Thumb(
+private fun ThumbContent(
     interactionSource: MutableInteractionSource,
     modifier: Modifier,
     colors: SliderColors,

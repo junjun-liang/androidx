@@ -77,8 +77,8 @@ import androidx.xr.compose.spatial.Subspace
 import androidx.xr.compose.subspace.SpatialColumn
 import androidx.xr.compose.subspace.SpatialPanel
 import androidx.xr.compose.subspace.layout.SubspaceModifier
+import androidx.xr.compose.subspace.layout.movable
 import androidx.xr.compose.subspace.layout.size
-import androidx.xr.compose.subspace.layout.transformingMovable
 import androidx.xr.compose.testapp.R
 import androidx.xr.compose.testapp.common.isDrmSupported
 import androidx.xr.compose.testapp.common.isMvHevcSupported
@@ -101,9 +101,7 @@ import androidx.xr.scenecore.Texture
 import androidx.xr.scenecore.scene
 import java.io.File
 import java.nio.file.Paths
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 private const val TAG = "JXR-SurfaceEntity-VideoPlayerActivity"
 
@@ -133,28 +131,29 @@ class VideoPlayerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         lifecycleScope.launch {
-            val sessionResult =
-                withContext(Dispatchers.IO) { Session.create(context = this@VideoPlayerActivity) }
-            if (sessionResult !is SessionCreateSuccess) {
-                finish()
-                return@launch
-            }
-            session = sessionResult.session
-            session.scene.spatialEnvironment.preferredPassthroughOpacity = 0.0f
-            session.configure(Config(deviceTracking = DeviceTrackingMode.SPATIAL))
-            arDevice = ArDevice.getInstance(session)
+            val sessionResult = Session.create(context = this@VideoPlayerActivity)
+            if (sessionResult is SessionCreateSuccess) {
+                session = sessionResult.session
+                session.scene.spatialEnvironment.preferredPassthroughOpacity = 0.0f
+                session.configure(
+                    Config.Builder().setDeviceTracking(DeviceTrackingMode.SPATIAL).build()
+                )
+                arDevice = ArDevice.getInstance(session)
 
-            checkExternalStoragePermission()
+                checkExternalStoragePermission()
 
-            // Load texture
-            alphaMaskTexture = Texture.create(session, Paths.get("textures", "alpha_mask.png"))
+                // Load texture
+                alphaMaskTexture = Texture.create(session, Paths.get("textures", "alpha_mask.png"))
 
-            setContent {
-                if (LocalSpatialCapabilities.current.isSpatialUiEnabled) {
-                    SpatialVideoPlayerUi()
-                } else {
-                    VideoPlayerUi()
+                setContent {
+                    if (LocalSpatialCapabilities.current.isSpatialUiEnabled) {
+                        SpatialVideoPlayerUi()
+                    } else {
+                        VideoPlayerUi()
+                    }
                 }
+            } else {
+                finish()
             }
         }
     }
@@ -164,9 +163,7 @@ class VideoPlayerActivity : ComponentActivity() {
         Subspace {
             SpatialColumn {
                 SpatialPanel(
-                    modifier =
-                        SubspaceModifier.size(DpVolumeSize(960.dp, 720.dp, 0.dp))
-                            .transformingMovable()
+                    modifier = SubspaceModifier.size(DpVolumeSize(960.dp, 720.dp, 0.dp)).movable()
                 ) {
                     VideoPlayerTestActivityUI(true, getString(R.string.video_player_test))
                 }
@@ -309,10 +306,10 @@ class VideoPlayerActivity : ComponentActivity() {
                     val modifier = Modifier.weight(1F)
                     ApiButton("Toggle Passthrough", modifier) { togglePassthrough(session) }
                     ApiButton("Switch to FSM", modifier) {
-                        session.scene.requestFullSpaceMode()
+                        session.scene.requestFullSpace()
                         checkExternalStoragePermission()
                     }
-                    ApiButton("Switch to HSM", modifier) { session.scene.requestHomeSpaceMode() }
+                    ApiButton("Switch to HSM", modifier) { session.scene.requestHomeSpace() }
                 }
             }
         }

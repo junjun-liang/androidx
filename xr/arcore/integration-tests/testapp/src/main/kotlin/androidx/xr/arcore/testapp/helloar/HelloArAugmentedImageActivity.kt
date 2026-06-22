@@ -46,11 +46,11 @@ import androidx.xr.arcore.testapp.common.TrackablesList
 import androidx.xr.arcore.testapp.helloar.rendering.AugmentedImageRenderer
 import androidx.xr.arcore.testapp.ui.theme.GoogleYellow
 import androidx.xr.compose.spatial.Subspace
-import androidx.xr.compose.subspace.ResizePolicy
 import androidx.xr.compose.subspace.SpatialPanel
 import androidx.xr.compose.subspace.layout.SubspaceModifier
+import androidx.xr.compose.subspace.layout.movable
+import androidx.xr.compose.subspace.layout.resizable
 import androidx.xr.compose.subspace.layout.size
-import androidx.xr.compose.subspace.layout.transformingMovable
 import androidx.xr.compose.unit.DpVolumeSize
 import androidx.xr.runtime.AugmentedImageDatabase
 import androidx.xr.runtime.AugmentedImageDatabaseEntryMode
@@ -68,6 +68,7 @@ class HelloArAugmentedImageActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val configBuilder = Config.Builder().setDeviceTracking(DeviceTrackingMode.SPATIAL)
         val augmentedImageDatabase = AugmentedImageDatabase()
         try {
             val inputStream = this.assets.open("images/earth.jpg")
@@ -79,6 +80,7 @@ class HelloArAugmentedImageActivity : ComponentActivity() {
             )
 
             inputStream.close()
+            configBuilder.setAugmentedImageDatabase(augmentedImageDatabase)
         } catch (e: IOException) {
             Log.e(ACTIVITY_NAME, "Something went wrong loading the image from assets.")
         }
@@ -87,20 +89,18 @@ class HelloArAugmentedImageActivity : ComponentActivity() {
         sessionHelper =
             SessionLifecycleHelper(
                 this,
-                Config(
-                    augmentedImageDatabase = augmentedImageDatabase,
-                    deviceTracking = DeviceTrackingMode.SPATIAL,
-                ),
+                configBuilder.build(),
                 onSessionAvailable = { session ->
                     this.session = session
+                    augmentedImageRenderer.startRendering(session, lifecycleScope)
 
                     setContent {
                         Subspace {
                             SpatialPanel(
                                 modifier =
                                     SubspaceModifier.size(DpVolumeSize(640.dp, 480.dp, 0.dp))
-                                        .transformingMovable(),
-                                resizePolicy = ResizePolicy(),
+                                        .movable()
+                                        .resizable()
                             ) {
                                 HelloImages(session)
                             }

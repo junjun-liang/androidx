@@ -96,9 +96,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Paths
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 private const val TAG = "JXR-SurfaceEntity-SurfaceEntityCustomMeshActivity"
 
@@ -394,33 +392,37 @@ class SurfaceEntityCustomMeshActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         lifecycleScope.launch {
-            val sessionResult =
-                withContext(Dispatchers.IO) {
-                    Session.create(context = this@SurfaceEntityCustomMeshActivity)
+            val sessionResult = Session.create(context = this@SurfaceEntityCustomMeshActivity)
+            if (sessionResult is SessionCreateSuccess) {
+                val session = sessionResult.session
+                session.configure(
+                    Config.Builder().setDeviceTracking(DeviceTrackingMode.SPATIAL).build()
+                )
+                session.scene.spatialEnvironment.preferredPassthroughOpacity = 0.0f
+
+                checkExternalStoragePermission()
+
+                // Set up the MoveableComponent so the user can move the Main Panel out of the way
+                // of
+                // video canvases which appear behind it.
+                if (movableComponentMP == null) {
+                    movableComponentMP = MovableComponent.createSystemMovable(session)
+                    val unused = session.scene.mainPanelEntity.addComponent(movableComponentMP!!)
                 }
-            if (sessionResult !is SessionCreateSuccess) {
+
+                // This will be re-used throughout the life of the Activity.
+                movieParent =
+                    Entity.create(
+                        session,
+                        name = "movieParent",
+                        parent = session.scene.activitySpace,
+                    )
+
+                alphaMaskTexture = Texture.create(session, Paths.get("textures", "alpha_mask.png"))
+                setContent { HelloWorld(session, activity) }
+            } else {
                 finish()
-                return@launch
             }
-            val session = sessionResult.session
-            session.configure(Config(deviceTracking = DeviceTrackingMode.SPATIAL))
-            session.scene.spatialEnvironment.preferredPassthroughOpacity = 0.0f
-
-            checkExternalStoragePermission()
-
-            // Set up the MoveableComponent so the user can move the Main Panel out of the way of
-            // video canvases which appear behind it.
-            if (movableComponentMP == null) {
-                movableComponentMP = MovableComponent.createSystemMovable(session)
-                val unused = session.scene.mainPanelEntity.addComponent(movableComponentMP!!)
-            }
-
-            // This will be re-used throughout the life of the Activity.
-            movieParent =
-                Entity.create(session, name = "movieParent", parent = session.scene.activitySpace)
-
-            alphaMaskTexture = Texture.create(session, Paths.get("textures", "alpha_mask.png"))
-            setContent { HelloWorld(session, activity) }
         }
     }
 

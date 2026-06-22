@@ -46,6 +46,7 @@ import androidx.camera.camera2.pipe.testing.FakeImageReaders
 import androidx.camera.camera2.pipe.testing.FakeImageSources
 import androidx.camera.camera2.pipe.testing.FakeSurfaces
 import androidx.camera.camera2.pipe.testing.FakeThreads
+import androidx.camera.camera2.pipe.testing.HighEndDeviceTemplate
 import androidx.camera.camera2.pipe.testing.RobolectricCameraPipeTestRunner
 import com.google.common.truth.Truth.assertThat
 import kotlin.time.Duration.Companion.seconds
@@ -93,7 +94,8 @@ class Camera2CameraControllerTest {
     private val fakeCaptureSequenceProcessorFactory: Camera2CaptureSequenceProcessorFactory = mock()
     private val fakeCamera2DeviceManager = FakeCamera2DeviceManager()
     private val fakeCameraSurfaceManager = CameraSurfaceManager()
-    private val fakeCameraMetadata = FakeCameraMetadata(cameraId = cameraId)
+    private val fakeCameraMetadata =
+        FakeCameraMetadata.fromTemplate(template = HighEndDeviceTemplate, cameraId = cameraId)
     private val fakeCamera2Quirks =
         Camera2Quirks(
             FakeCamera2MetadataProvider(mapOf(cameraId to fakeCameraMetadata)),
@@ -123,24 +125,24 @@ class Camera2CameraControllerTest {
             )
         cameraController =
             Camera2CameraController(
-                testBackgroundScope,
-                fakeThreads,
-                StrictMode(true),
-                fakeGraphConfig,
-                fakeGraphListener,
-                fakeSurfaceTracker,
-                fakeCameraStatusMonitor,
-                fakeCaptureSessionFactory,
-                fakeCaptureSequenceProcessorFactory,
-                fakeCamera2DeviceManager,
-                fakeCameraSurfaceManager,
-                fakeCamera2SystemState,
-                fakeCamera2Quirks,
-                fakeTimeSource,
-                fakeGraphId,
-                fakeShutdownListener,
-                streamGraph,
-                fakeConcurrentSessionSequencers,
+                cameraGraphId = fakeGraphId,
+                graphConfig = fakeGraphConfig,
+                scope = testBackgroundScope,
+                threads = fakeThreads,
+                strictMode = StrictMode(true),
+                timeSource = fakeTimeSource,
+                camera2Quirks = fakeCamera2Quirks,
+                camera2DeviceManager = fakeCamera2DeviceManager,
+                camera2SystemState = fakeCamera2SystemState,
+                cameraStatusMonitor = fakeCameraStatusMonitor,
+                concurrentSessionSequencers = fakeConcurrentSessionSequencers,
+                streamGraph = streamGraph,
+                cameraSurfaceManager = fakeCameraSurfaceManager,
+                surfaceTracker = fakeSurfaceTracker,
+                captureSessionFactory = fakeCaptureSessionFactory,
+                captureSequenceProcessorFactory = fakeCaptureSequenceProcessorFactory,
+                graphListener = fakeGraphListener,
+                shutdownListener = fakeShutdownListener,
             )
         return cameraController
     }

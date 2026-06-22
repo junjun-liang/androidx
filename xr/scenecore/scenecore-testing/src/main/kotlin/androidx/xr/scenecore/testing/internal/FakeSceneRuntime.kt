@@ -25,6 +25,7 @@ import androidx.annotation.RequiresApi
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.xr.arcore.Trackable
+import androidx.xr.runtime.Config
 import androidx.xr.runtime.math.Pose
 import androidx.xr.scenecore.runtime.ActivityPanelEntity
 import androidx.xr.scenecore.runtime.AnchorEntity
@@ -115,11 +116,14 @@ internal class FakeSceneRuntime(val executor: Executor? = null) :
     val state: Enum<State>
         get() = _state
 
+    override var config: Config = Config.Builder().build()
+        private set
+
     override var spatialCapabilities: SpatialCapabilities =
         SpatialCapabilities(ALL_SPATIAL_CAPABILITIES)
         set(value) {
             field = value
-            spatialCapabilitiesChangedMap.forEach { (consumer, executor) ->
+            spatialCapabilitiesChangedMap.toMap().forEach { (consumer, executor) ->
                 executor.execute { consumer.accept(value) }
             }
         }
@@ -146,6 +150,10 @@ internal class FakeSceneRuntime(val executor: Executor? = null) :
 
     override var spatialModeChangeListener: SpatialModeChangeListener? =
         FakeSpatialModeChangeListener()
+
+    override fun configure(config: Config) {
+        this.config = config
+    }
 
     override fun getScenePoseFromPerceptionPose(pose: Pose): ScenePose {
         return FakePerceptionSpaceScenePose(pose)
@@ -252,11 +260,6 @@ internal class FakeSceneRuntime(val executor: Executor? = null) :
         return entity
     }
 
-    @Deprecated("Use createEntity instead.")
-    override fun createGroupEntity(pose: Pose, name: String, parent: Entity?): Entity {
-        return createEntity(pose, name, parent)
-    }
-
     override fun createLoggingEntity(pose: Pose): LoggingEntity =
         object : LoggingEntity, FakeEntity() {}
 
@@ -351,6 +354,17 @@ internal class FakeSceneRuntime(val executor: Executor? = null) :
     }
 
     /**
+     * For test purposes only. Notifies all registered listeners of a perceived resolution change.
+     */
+    // TODO: b/514561866 - Add unit tests for this once testing/FakeSceneRuntime is removed.
+    internal fun onPerceivedResolutionChanged(width: Int, height: Int) {
+        val rtDimensions = PixelDimensions(width, height)
+        _perceivedResolutionChangedMap.toMap().forEach { (consumer, executor) ->
+            executor.execute { consumer.accept(rtDimensions) }
+        }
+    }
+
+    /**
      * For test purposes only.
      *
      * Stores the [Activity] that was last provided to the [setPreferredAspectRatio] method. Tests
@@ -441,7 +455,6 @@ internal class FakeSceneRuntime(val executor: Executor? = null) :
     ): FakeResizableComponent {
         val resizableComponent =
             FakeResizableComponent(minimumSize = minimumSize, maximumSize = maximumSize)
-
         return resizableComponent
     }
 
@@ -551,7 +564,7 @@ internal class FakeSceneRuntime(val executor: Executor? = null) :
         _isBoundaryConsentGranted = boundaryConsent
 
         if (oldBoundaryConsent != boundaryConsent) {
-            _boundaryConsentChangedMap.forEach { (listener, executor) ->
+            _boundaryConsentChangedMap.toMap().forEach { (listener, executor) ->
                 executor.execute { listener.accept(boundaryConsent) }
             }
         }

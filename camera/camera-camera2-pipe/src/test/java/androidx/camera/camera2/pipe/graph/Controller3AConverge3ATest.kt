@@ -24,6 +24,7 @@ import androidx.camera.camera2.pipe.Converge3ABehavior
 import androidx.camera.camera2.pipe.FrameNumber
 import androidx.camera.camera2.pipe.RequestNumber
 import androidx.camera.camera2.pipe.Result3A
+import androidx.camera.camera2.pipe.testing.EmulatorDeviceTemplate
 import androidx.camera.camera2.pipe.testing.FakeCameraMetadata
 import androidx.camera.camera2.pipe.testing.FakeCaptureSequenceProcessor.Companion.isCapture
 import androidx.camera.camera2.pipe.testing.FakeCaptureSequenceProcessor.Companion.isRepeating
@@ -34,6 +35,7 @@ import androidx.camera.camera2.pipe.testing.FakeRequestMetadata
 import androidx.camera.camera2.pipe.testing.HighEndDeviceTemplate
 import androidx.camera.camera2.pipe.testing.RobolectricCameraPipeTestRunner
 import com.google.common.truth.Truth.assertThat
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
@@ -108,7 +110,7 @@ internal class Controller3AConverge3ATest {
                             ),
                     ),
                 )
-                delay(FRAME_RATE_MS)
+                delay(FRAME_RATE)
             }
         }
 
@@ -168,7 +170,7 @@ internal class Controller3AConverge3ATest {
                             ),
                     ),
                 )
-                delay(FRAME_RATE_MS)
+                delay(FRAME_RATE)
             }
         }
 
@@ -231,11 +233,13 @@ internal class Controller3AConverge3ATest {
     @Test
     fun testConverge3AWithUnsupportedAutoFocusTrigger() = runTest {
         val fakeMetadataNoAf =
-            FakeCameraMetadata(
-                mapOf(
-                    CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES to
-                        intArrayOf(CaptureRequest.CONTROL_AF_MODE_OFF)
-                )
+            FakeCameraMetadata.fromTemplate(
+                template = EmulatorDeviceTemplate,
+                characteristicsOverrides =
+                    mapOf(
+                        CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES to
+                            intArrayOf(CaptureRequest.CONTROL_AF_MODE_OFF)
+                    ),
             )
         val controller3A = Controller3A(graphProcessor, fakeMetadataNoAf, graphState3A, listener3A)
 
@@ -250,6 +254,6 @@ internal class Controller3AConverge3ATest {
 
     companion object {
         // The time duration in milliseconds between two frame results.
-        private const val FRAME_RATE_MS = 33L
+        private val FRAME_RATE = 33.milliseconds
     }
 }

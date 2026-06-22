@@ -36,6 +36,7 @@ import kotlin.test.assertFailsWith
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -63,7 +64,7 @@ class AugmentedImageTest {
     private lateinit var imageDatabase: AugmentedImageDatabase
 
     @Before
-    fun setUp() {
+    fun setUp(): Unit = runBlocking {
         testDispatcher = StandardTestDispatcher()
         testScope = TestScope(testDispatcher)
         activityController = Robolectric.buildActivity(ComponentActivity::class.java)
@@ -83,7 +84,7 @@ class AugmentedImageTest {
                 )
             }
 
-        session.configure(Config(augmentedImageDatabase = imageDatabase))
+        session.configure(Config.Builder().setAugmentedImageDatabase(imageDatabase).build())
     }
 
     @Test
@@ -104,7 +105,7 @@ class AugmentedImageTest {
 
     @Test
     fun subscribe_imageTrackingDisabled_throwsIllegalStateException() {
-        session.configure(Config(augmentedImageDatabase = null))
+        session.configure(Config.Builder().setAugmentedImageDatabase(null).build())
 
         assertFailsWith<IllegalStateException> { AugmentedImage.subscribe(session) }
     }
@@ -147,7 +148,7 @@ class AugmentedImageTest {
 
             activityController.pause()
             advanceUntilIdle()
-            session.configure(Config(augmentedImageDatabase = null))
+            session.configure(Config.Builder().setAugmentedImageDatabase(null).build())
             activityController.resume()
             advanceUntilIdle()
 

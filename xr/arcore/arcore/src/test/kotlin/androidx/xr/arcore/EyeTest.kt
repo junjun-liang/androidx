@@ -31,6 +31,7 @@ import androidx.xr.runtime.math.Vector3
 import com.google.common.truth.Truth.assertThat
 import kotlin.test.assertFailsWith
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -55,7 +56,7 @@ class EyeTest {
     private lateinit var session: Session
 
     @Before
-    fun setUp() {
+    fun setUp(): Unit = runBlocking {
         testDispatcher = StandardTestDispatcher()
         testScope = TestScope(testDispatcher)
         activityController = Robolectric.buildActivity(ComponentActivity::class.java)
@@ -69,12 +70,12 @@ class EyeTest {
             (Session.create(context = activity, coroutineContext = testDispatcher)
                     as SessionCreateSuccess)
                 .session
-        session.configure(Config(eyeTracking = EyeTrackingMode.FINE_TRACKING))
+        session.configure(Config.Builder().setEyeTracking(EyeTrackingMode.FINE_TRACKING).build())
     }
 
     @Test
     fun left_eyeTrackingDisabled_throwsIllegalStateException() {
-        session.configure(Config(eyeTracking = EyeTrackingMode.DISABLED))
+        session.configure(Config.Builder().setEyeTracking(EyeTrackingMode.DISABLED).build())
 
         assertFailsWith<IllegalStateException> { Eye.left(session) }
     }
@@ -84,6 +85,7 @@ class EyeTest {
     fun left_trackingStateMatchesRuntime() =
         runTest(testDispatcher) {
             val underTest = Eye.left(session)
+            arCoreTestRule.leftEyeTester.isOpen = true
             advanceUntilIdle()
 
             assertThat(underTest.state.value.trackingState).isEqualTo(TrackingState.TRACKING)
@@ -125,7 +127,7 @@ class EyeTest {
 
     @Test
     fun right_eyeTrackingDisabled_throwsIllegalStateException() {
-        session.configure(Config(eyeTracking = EyeTrackingMode.DISABLED))
+        session.configure(Config.Builder().setEyeTracking(EyeTrackingMode.DISABLED).build())
 
         assertFailsWith<IllegalStateException> { Eye.right(session) }
     }
@@ -135,6 +137,7 @@ class EyeTest {
     fun right_trackingStateMatchesRuntime() =
         runTest(testDispatcher) {
             val underTest = Eye.right(session)
+            arCoreTestRule.rightEyeTester.isOpen = true
             advanceUntilIdle()
 
             assertThat(underTest.state.value.trackingState).isEqualTo(TrackingState.TRACKING)

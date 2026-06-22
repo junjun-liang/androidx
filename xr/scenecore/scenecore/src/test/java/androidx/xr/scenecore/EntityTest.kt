@@ -15,6 +15,7 @@
  */
 
 @file:Suppress("DEPRECATION")
+@file:kotlin.OptIn(androidx.xr.scenecore.ExperimentalGltfAnimationApi::class)
 
 package androidx.xr.scenecore
 
@@ -44,15 +45,14 @@ import androidx.xr.scenecore.runtime.PerceivedResolutionResult as RtPerceivedRes
 import androidx.xr.scenecore.runtime.PixelDimensions as RtPixelDimensions
 import androidx.xr.scenecore.runtime.RenderingRuntime
 import androidx.xr.scenecore.runtime.SceneRuntime
-import androidx.xr.scenecore.runtime.SurfaceEntity as RtSurfaceEntity
 import androidx.xr.scenecore.testing.FakeActivityPanelEntity
 import androidx.xr.scenecore.testing.FakeAnchorEntity
 import androidx.xr.scenecore.testing.FakeGltfModelResource
 import androidx.xr.scenecore.testing.FakePanelEntity
-import androidx.xr.scenecore.testing.FakeSurfaceEntity
 import androidx.xr.scenecore.testing.GltfModelEntityTester
 import androidx.xr.scenecore.testing.MemoryUtils
 import androidx.xr.scenecore.testing.SceneCoreTestRule
+import androidx.xr.scenecore.testing.SurfaceEntityTester
 import androidx.xr.scenecore.testing.TestGltfAnimation
 import com.android.extensions.xr.XrExtensions
 import com.google.common.truth.Truth.assertThat
@@ -94,10 +94,11 @@ class EntityTest {
     private lateinit var gltfModel: GltfModel
     private lateinit var gltfModelEntity: GltfModelEntity
     private lateinit var panelEntity: PanelEntity
-    private lateinit var anchorEntity: AnchorEntity
+    private lateinit var anchorSpace: AnchorSpace
     private lateinit var activityPanelEntity: ActivityPanelEntity
     private lateinit var entity: Entity
     private lateinit var surfaceEntity: SurfaceEntity
+    private lateinit var surfaceEntityTester: SurfaceEntityTester
 
     private lateinit var gltfModelEntityTester: GltfModelEntityTester
 
@@ -140,7 +141,7 @@ class EntityTest {
 
     @RequiresApi(Build.VERSION_CODES.O)
     @Before
-    fun setUp() = runBlocking {
+    fun setUp(): Unit = runBlocking {
         val testDispatcher = StandardTestDispatcher()
         val result = Session.create(activity, testDispatcher)
 
@@ -151,10 +152,10 @@ class EntityTest {
         sceneRuntime = session.sceneRuntime
         renderingRuntime = session.renderingRuntime
         session.configure(
-            Config(
-                planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL,
-                deviceTracking = DeviceTrackingMode.SPATIAL,
-            )
+            Config.Builder()
+                .setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL)
+                .setDeviceTracking(DeviceTrackingMode.SPATIAL)
+                .build()
         )
         renderViewpoint = RenderViewpoint.left(session)
         entityRegistry = session.scene.entityRegistry
@@ -177,8 +178,8 @@ class EntityTest {
                 name = "test",
                 parent = session.scene.activitySpace,
             )
-        anchorEntity =
-            AnchorEntity.create(
+        anchorSpace =
+            AnchorSpace.create(
                 session,
                 FloatSize2d(),
                 PlaneOrientation.ALL,
@@ -201,19 +202,20 @@ class EntityTest {
                 SurfaceEntity.StereoMode.SIDE_BY_SIDE,
                 parent = session.scene.activitySpace,
             )
+        surfaceEntityTester = testRule.createTester<SurfaceEntityTester>(surfaceEntity)
     }
 
     @Test
     fun allEntity_disposeAndCreateWithNullParent_callsRuntimeEntityImplSetParent() {
-        activityPanelEntity.disposeInternal()
+        activityPanelEntity.dispose()
 
-        gltfModelEntity.disposeInternal()
+        gltfModelEntity.dispose()
 
-        entity.disposeInternal()
+        entity.dispose()
 
-        panelEntity.disposeInternal()
+        panelEntity.dispose()
 
-        surfaceEntity.disposeInternal()
+        surfaceEntity.dispose()
 
         activityPanelEntity =
             ActivityPanelEntity.create(session, IntSize2d(640, 480), "test", parent = null)
@@ -249,7 +251,7 @@ class EntityTest {
         assertThat(panelEntity.rtEntity.parent).isNull()
         assertThat(surfaceEntity.rtEntity.parent).isNull()
 
-        panelEntity.disposeInternal()
+        panelEntity.dispose()
 
         panelEntity =
             PanelEntity.create(
@@ -264,15 +266,15 @@ class EntityTest {
 
     @Test
     fun allEntity_disposeAndCreateWithNullParent_getPoseInParentSpace() {
-        activityPanelEntity.disposeInternal()
+        activityPanelEntity.dispose()
 
-        gltfModelEntity.disposeInternal()
+        gltfModelEntity.dispose()
 
-        entity.disposeInternal()
+        entity.dispose()
 
-        panelEntity.disposeInternal()
+        panelEntity.dispose()
 
-        surfaceEntity.disposeInternal()
+        surfaceEntity.dispose()
 
         activityPanelEntity =
             ActivityPanelEntity.create(session, IntSize2d(640, 480), "test", parent = null)
@@ -311,15 +313,15 @@ class EntityTest {
 
     @Test
     fun allEntity_disposeAndCreateWithNullParent_getPoseInActivitySpace() {
-        activityPanelEntity.disposeInternal()
+        activityPanelEntity.dispose()
 
-        gltfModelEntity.disposeInternal()
+        gltfModelEntity.dispose()
 
-        entity.disposeInternal()
+        entity.dispose()
 
-        panelEntity.disposeInternal()
+        panelEntity.dispose()
 
-        surfaceEntity.disposeInternal()
+        surfaceEntity.dispose()
 
         activityPanelEntity =
             ActivityPanelEntity.create(session, IntSize2d(640, 480), "test", parent = null)
@@ -357,19 +359,19 @@ class EntityTest {
     }
 
     @Test
-    fun anchorEntityCreateWithNullTimeout_passesNullToImpl() {
-        anchorEntity =
-            AnchorEntity.create(session, FloatSize2d(), PlaneOrientation.ALL, PlaneSemanticType.ALL)
+    fun anchorSpaceCreateWithNullTimeout_passesNullToImpl() {
+        anchorSpace =
+            AnchorSpace.create(session, FloatSize2d(), PlaneOrientation.ALL, PlaneSemanticType.ALL)
 
-        assertThat(anchorEntity).isNotNull()
+        assertThat(anchorSpace).isNotNull()
     }
 
     @Test
-    fun anchorEntity_planeTrackingDisabled_throwsIllegalStateException() {
-        session.configure(Config(planeTracking = PlaneTrackingMode.DISABLED))
+    fun anchorSpace_planeTrackingDisabled_throwsIllegalStateException() {
+        session.configure(Config.Builder().setPlaneTracking(PlaneTrackingMode.DISABLED).build())
 
         assertFailsWith<IllegalStateException> {
-            AnchorEntity.create(session, FloatSize2d(), PlaneOrientation.ALL, PlaneSemanticType.ALL)
+            AnchorSpace.create(session, FloatSize2d(), PlaneOrientation.ALL, PlaneSemanticType.ALL)
         }
     }
 
@@ -377,15 +379,12 @@ class EntityTest {
     fun allEntitySetParent_callsRuntimeEntityImplSetParent() {
         panelEntity.parent = activitySpace
         gltfModelEntity.parent = activitySpace
-        anchorEntity.parent = activitySpace
         activityPanelEntity.parent = activitySpace
 
         assertThat(panelEntity.parent).isEqualTo(activitySpace)
         assertThat(panelEntity.rtEntity.parent).isEqualTo(activitySpace.rtEntity)
         assertThat(gltfModelEntity.parent).isEqualTo(activitySpace)
         assertThat(gltfModelEntity.rtEntity.parent).isEqualTo(activitySpace.rtEntity)
-        assertThat(anchorEntity.parent).isEqualTo(activitySpace)
-        assertThat(anchorEntity.rtEntity.parent).isEqualTo(activitySpace.rtEntity)
         assertThat(activityPanelEntity.parent).isEqualTo(activitySpace)
         assertThat(activityPanelEntity.rtEntity.parent).isEqualTo(activitySpace.rtEntity)
     }
@@ -395,7 +394,6 @@ class EntityTest {
         panelEntity.parent = activityPanelEntity
         gltfModelEntity.parent = panelEntity
         entity.parent = gltfModelEntity
-        anchorEntity.parent = entity
 
         assertThat(activityPanelEntity.parent).isEqualTo(activitySpace)
         assertThat(activityPanelEntity.rtEntity.parent).isEqualTo(activitySpace.rtEntity)
@@ -405,8 +403,6 @@ class EntityTest {
         assertThat(gltfModelEntity.rtEntity.parent).isEqualTo(panelEntity.rtEntity)
         assertThat(entity.parent).isEqualTo(gltfModelEntity)
         assertThat(entity.rtEntity.parent).isEqualTo(gltfModelEntity.rtEntity)
-        assertThat(anchorEntity.parent).isEqualTo(entity)
-        assertThat(anchorEntity.rtEntity.parent).isEqualTo(entity.rtEntity)
     }
 
     @Test
@@ -415,7 +411,6 @@ class EntityTest {
         panelEntity.parent = null
         gltfModelEntity.parent = null
         entity.parent = null
-        anchorEntity.parent = null
 
         assertThat(activityPanelEntity.parent).isNull()
         assertThat(activityPanelEntity.rtEntity.parent).isNull()
@@ -425,18 +420,16 @@ class EntityTest {
         assertThat(gltfModelEntity.rtEntity.parent).isNull()
         assertThat(entity.parent).isNull()
         assertThat(entity.rtEntity.parent).isNull()
-        assertThat(anchorEntity.parent).isNull()
-        assertThat(anchorEntity.rtEntity.parent).isNull()
     }
 
     @Test
     fun allEntityAddChild_callsRuntimeEntityImplAddChild() {
-        anchorEntity.addChild(panelEntity)
+        anchorSpace.addChild(panelEntity)
         panelEntity.addChild(gltfModelEntity)
         gltfModelEntity.addChild(activityPanelEntity)
 
-        assertThat(panelEntity.parent).isEqualTo(anchorEntity)
-        assertThat(panelEntity.rtEntity.parent).isEqualTo(anchorEntity.rtEntity)
+        assertThat(panelEntity.parent).isEqualTo(anchorSpace)
+        assertThat(panelEntity.rtEntity.parent).isEqualTo(anchorSpace.rtEntity)
         assertThat(gltfModelEntity.parent).isEqualTo(panelEntity)
         assertThat(gltfModelEntity.rtEntity.parent).isEqualTo(panelEntity.rtEntity)
         assertThat(activityPanelEntity.parent).isEqualTo(gltfModelEntity)
@@ -451,13 +444,13 @@ class EntityTest {
         panelEntity.setPose(pose)
         gltfModelEntity.setPose(pose, Space.PARENT)
         assertThrows(UnsupportedOperationException::class.java) {
-            anchorEntity.setPose(pose, Space.ACTIVITY)
+            anchorSpace.setPose(pose, Space.ACTIVITY)
         }
         activityPanelEntity.setPose(pose, Space.REAL_WORLD)
 
         assertThat(panelEntity.getPose()).isEqualTo(pose)
         assertThat(gltfModelEntity.getPose(Space.PARENT)).isEqualTo(pose)
-        assertThat(anchorEntity.getPose(Space.ACTIVITY)).isEqualTo(pose)
+        assertThat(anchorSpace.getPose(Space.ACTIVITY)).isEqualTo(pose)
         assertThat(activityPanelEntity.getPose(Space.REAL_WORLD)).isEqualTo(pose)
     }
 
@@ -465,7 +458,7 @@ class EntityTest {
     fun allEntityGetActivitySpacePose_callsRuntimeEntityImplGetActivitySpacePose() {
         check(panelEntity.rtEntity.activitySpacePose == Pose.Identity)
         check(gltfModelEntity.rtEntity.activitySpacePose == Pose.Identity)
-        check(anchorEntity.rtEntity.activitySpacePose == Pose.Identity)
+        check(anchorSpace.rtEntity.activitySpacePose == Pose.Identity)
         check(activityPanelEntity.rtEntity.activitySpacePose == Pose.Identity)
     }
 
@@ -475,14 +468,14 @@ class EntityTest {
 
         panelEntity.setAlpha(alpha)
         gltfModelEntity.setAlpha(alpha)
-        anchorEntity.setAlpha(alpha)
+        anchorSpace.setAlpha(alpha)
         activityPanelEntity.setAlpha(alpha)
         entity.setAlpha(alpha)
         activitySpace.setAlpha(alpha)
 
         assertThat(panelEntity.getAlpha()).isEqualTo(alpha)
         assertThat(gltfModelEntity.getAlpha()).isEqualTo(alpha)
-        assertThat(anchorEntity.getAlpha()).isEqualTo(alpha)
+        assertThat(anchorSpace.getAlpha()).isEqualTo(alpha)
         assertThat(activityPanelEntity.getAlpha()).isEqualTo(alpha)
         assertThat(entity.getAlpha()).isEqualTo(alpha)
         assertThat(activitySpace.getAlpha()).isEqualTo(alpha)
@@ -530,14 +523,14 @@ class EntityTest {
     fun allEntitySetEnabled_callsRuntimeEntityImplSetHidden() {
         panelEntity.setEnabled(false)
         gltfModelEntity.setEnabled(false)
-        anchorEntity.setEnabled(false)
+        anchorSpace.setEnabled(false)
         activityPanelEntity.setEnabled(true)
         entity.setEnabled(true)
         activitySpace.setEnabled(true)
 
         assertThat(panelEntity.rtEntity.isHidden(false)).isTrue()
         assertThat(gltfModelEntity.rtEntity.isHidden(false)).isTrue()
-        assertThat(anchorEntity.rtEntity.isHidden(false)).isTrue()
+        assertThat(anchorSpace.rtEntity.isHidden(false)).isTrue()
         assertThat(activityPanelEntity.rtEntity.isHidden(false)).isFalse()
         assertThat(entity.isEnabled()).isTrue()
         assertThat(activitySpace.rtEntity.isHidden(false)).isFalse()
@@ -553,7 +546,7 @@ class EntityTest {
 
         // We expect this to raise an exception
         assertThrows(UnsupportedOperationException::class.java) {
-            anchorEntity.setScale(scale, Space.ACTIVITY)
+            anchorSpace.setScale(scale, Space.ACTIVITY)
         }
         activityPanelEntity.setScale(scale, Space.REAL_WORLD)
         entity.setScale(scale)
@@ -561,7 +554,7 @@ class EntityTest {
 
         assertThat(panelEntity.getScale()).isEqualTo(scale)
         assertThat(gltfModelEntity.getScale(Space.PARENT)).isEqualTo(scale)
-        assertThat(anchorEntity.getScale(Space.ACTIVITY)).isEqualTo(1f)
+        assertThat(anchorSpace.getScale(Space.ACTIVITY)).isEqualTo(1f)
         assertThat(activityPanelEntity.getScale(Space.REAL_WORLD)).isEqualTo(scale)
         assertThat(entity.getScale()).isEqualTo(scale)
         assertThrows(IllegalArgumentException::class.java) { activitySpace.getScale() }
@@ -578,7 +571,7 @@ class EntityTest {
 
         // We expect this to raise an exception
         assertThrows(UnsupportedOperationException::class.java) {
-            anchorEntity.setScale(scale, Space.ACTIVITY)
+            anchorSpace.setScale(scale, Space.ACTIVITY)
         }
         activityPanelEntity.setScale(scale, Space.REAL_WORLD)
         entity.setScale(scale)
@@ -586,7 +579,7 @@ class EntityTest {
 
         assertThat(panelEntity.getScale()).isEqualTo(sdkScale)
         assertThat(gltfModelEntity.getScale(Space.PARENT)).isEqualTo(sdkScale)
-        assertThat(anchorEntity.getScale(Space.ACTIVITY)).isEqualTo(1.0f)
+        assertThat(anchorSpace.getScale(Space.ACTIVITY)).isEqualTo(1.0f)
         assertThat(activityPanelEntity.getScale(Space.REAL_WORLD)).isEqualTo(sdkScale)
         assertThat(entity.getScale()).isEqualTo(sdkScale)
         assertThrows(IllegalArgumentException::class.java) { activitySpace.getScale() }
@@ -602,7 +595,7 @@ class EntityTest {
 
         // We expect this to raise an exception
         assertThrows(UnsupportedOperationException::class.java) {
-            anchorEntity.setScale(scale, Space.ACTIVITY)
+            anchorSpace.setScale(scale, Space.ACTIVITY)
         }
         activityPanelEntity.setScale(scale, Space.REAL_WORLD)
         entity.setScale(scale)
@@ -610,7 +603,7 @@ class EntityTest {
 
         assertThat(panelEntity.getNonUniformScale()).isEqualTo(scale)
         assertThat(gltfModelEntity.getNonUniformScale(Space.PARENT)).isEqualTo(scale)
-        assertThat(anchorEntity.getNonUniformScale(Space.ACTIVITY)).isEqualTo(Vector3.One)
+        assertThat(anchorSpace.getNonUniformScale(Space.ACTIVITY)).isEqualTo(Vector3.One)
         assertThat(activityPanelEntity.getNonUniformScale(Space.REAL_WORLD)).isEqualTo(scale)
         assertThat(entity.getNonUniformScale()).isEqualTo(scale)
 
@@ -627,7 +620,7 @@ class EntityTest {
 
         // We expect this to raise an exception
         assertThrows(UnsupportedOperationException::class.java) {
-            anchorEntity.setScale(scale, Space.ACTIVITY)
+            anchorSpace.setScale(scale, Space.ACTIVITY)
         }
         activityPanelEntity.setScale(scale, Space.REAL_WORLD)
         entity.setScale(scale)
@@ -635,7 +628,7 @@ class EntityTest {
 
         assertThat(panelEntity.getNonUniformScale()).isEqualTo(scale)
         assertThat(gltfModelEntity.getNonUniformScale(Space.PARENT)).isEqualTo(scale)
-        assertThat(anchorEntity.getNonUniformScale(Space.ACTIVITY)).isEqualTo(Vector3.One)
+        assertThat(anchorSpace.getNonUniformScale(Space.ACTIVITY)).isEqualTo(Vector3.One)
         assertThat(activityPanelEntity.getNonUniformScale(Space.REAL_WORLD)).isEqualTo(scale)
         assertThat(entity.getNonUniformScale()).isEqualTo(scale)
         assertThrows(IllegalArgumentException::class.java) { activitySpace.getNonUniformScale() }
@@ -649,7 +642,7 @@ class EntityTest {
             .isEqualTo(pose)
         assertThat(gltfModelEntity.rtEntity.transformPoseTo(pose, panelEntity.rtScenePose))
             .isEqualTo(pose)
-        assertThat(anchorEntity.rtEntity.transformPoseTo(pose, panelEntity.rtScenePose))
+        assertThat(anchorSpace.rtEntity.transformPoseTo(pose, panelEntity.rtScenePose))
             .isEqualTo(pose)
         assertThat(activityPanelEntity.rtEntity.transformPoseTo(pose, panelEntity.rtScenePose))
             .isEqualTo(pose)
@@ -710,17 +703,17 @@ class EntityTest {
 
     @Test
     fun allEntityDispose_callsRuntimeEntityImplDispose() {
-        gltfModelEntity.disposeInternal()
+        gltfModelEntity.dispose()
 
-        panelEntity.disposeInternal()
+        panelEntity.dispose()
 
-        anchorEntity.disposeInternal()
+        anchorSpace.dispose()
 
-        activityPanelEntity.disposeInternal()
+        activityPanelEntity.dispose()
 
         assertThat(gltfModelEntity.isDisposed).isTrue()
         assertThat(panelEntity.isDisposed).isTrue()
-        assertThat(anchorEntity.isDisposed).isTrue()
+        assertThat(anchorSpace.isDisposed).isTrue()
         assertThat(activityPanelEntity.isDisposed).isTrue()
     }
 
@@ -787,7 +780,7 @@ class EntityTest {
 
         assertThat(panelEntity.addComponent(component)).isTrue()
         assertThat(gltfModelEntity.addComponent(component)).isTrue()
-        assertThat(anchorEntity.addComponent(component)).isTrue()
+        assertThat(anchorSpace.addComponent(component)).isTrue()
         assertThat(activityPanelEntity.addComponent(component)).isTrue()
     }
 
@@ -797,7 +790,7 @@ class EntityTest {
 
         assertThat(panelEntity.addComponent(component)).isFalse()
         assertThat(gltfModelEntity.addComponent(component)).isFalse()
-        assertThat(anchorEntity.addComponent(component)).isFalse()
+        assertThat(anchorSpace.addComponent(component)).isFalse()
         assertThat(activityPanelEntity.addComponent(component)).isFalse()
     }
 
@@ -817,9 +810,9 @@ class EntityTest {
 
         assertThat(component.onDetached).isEqualTo(2)
 
-        assertThat(anchorEntity.addComponent(component)).isTrue()
+        assertThat(anchorSpace.addComponent(component)).isTrue()
 
-        anchorEntity.removeComponent(component)
+        anchorSpace.removeComponent(component)
 
         assertThat(component.onDetached).isEqualTo(3)
 
@@ -841,8 +834,8 @@ class EntityTest {
         assertThat(gltfModelEntity.addComponent(component1)).isTrue()
         assertThat(gltfModelEntity.addComponent(component2)).isTrue()
 
-        assertThat(anchorEntity.addComponent(component1)).isTrue()
-        assertThat(anchorEntity.addComponent(component2)).isTrue()
+        assertThat(anchorSpace.addComponent(component1)).isTrue()
+        assertThat(anchorSpace.addComponent(component2)).isTrue()
 
         assertThat(activityPanelEntity.addComponent(component1)).isTrue()
         assertThat(activityPanelEntity.addComponent(component2)).isTrue()
@@ -859,8 +852,8 @@ class EntityTest {
         assertThat(gltfModelEntity.addComponent(component1)).isTrue()
         assertThat(gltfModelEntity.addComponent(component2)).isTrue()
 
-        assertThat(anchorEntity.addComponent(component1)).isTrue()
-        assertThat(anchorEntity.addComponent(component2)).isTrue()
+        assertThat(anchorSpace.addComponent(component1)).isTrue()
+        assertThat(anchorSpace.addComponent(component2)).isTrue()
 
         assertThat(activityPanelEntity.addComponent(component1)).isTrue()
         assertThat(activityPanelEntity.addComponent(component2)).isTrue()
@@ -887,10 +880,10 @@ class EntityTest {
         assertThat(component1.onDetached).isEqualTo(2)
         assertThat(component2.onDetached).isEqualTo(2)
 
-        assertThat(anchorEntity.addComponent(component1)).isTrue()
-        assertThat(anchorEntity.addComponent(component2)).isTrue()
+        assertThat(anchorSpace.addComponent(component1)).isTrue()
+        assertThat(anchorSpace.addComponent(component2)).isTrue()
 
-        anchorEntity.removeAllComponents()
+        anchorSpace.removeAllComponents()
 
         assertThat(component1.onDetached).isEqualTo(3)
         assertThat(component2.onDetached).isEqualTo(3)
@@ -916,8 +909,8 @@ class EntityTest {
         assertThat(gltfModelEntity.addComponent(component)).isTrue()
         assertThat(component.onAttached).isEqualTo(4)
 
-        assertThat(anchorEntity.addComponent(component)).isTrue()
-        assertThat(anchorEntity.addComponent(component)).isTrue()
+        assertThat(anchorSpace.addComponent(component)).isTrue()
+        assertThat(anchorSpace.addComponent(component)).isTrue()
         assertThat(component.onAttached).isEqualTo(6)
 
         assertThat(activityPanelEntity.addComponent(component)).isTrue()
@@ -942,10 +935,10 @@ class EntityTest {
 
         assertThat(component.onDetached).isEqualTo(2)
 
-        assertThat(anchorEntity.addComponent(component)).isTrue()
+        assertThat(anchorSpace.addComponent(component)).isTrue()
 
-        anchorEntity.removeComponent(component)
-        anchorEntity.removeComponent(component)
+        anchorSpace.removeComponent(component)
+        anchorSpace.removeComponent(component)
 
         assertThat(component.onDetached).isEqualTo(3)
 
@@ -963,25 +956,25 @@ class EntityTest {
 
         assertThat(panelEntity.addComponent(component)).isTrue()
 
-        panelEntity.disposeInternal()
+        panelEntity.dispose()
 
         assertThat(component.onDetached).isEqualTo(1)
 
         assertThat(gltfModelEntity.addComponent(component)).isTrue()
 
-        gltfModelEntity.disposeInternal()
+        gltfModelEntity.dispose()
 
         assertThat(component.onDetached).isEqualTo(2)
 
-        assertThat(anchorEntity.addComponent(component)).isTrue()
+        assertThat(anchorSpace.addComponent(component)).isTrue()
 
-        anchorEntity.disposeInternal()
+        anchorSpace.dispose()
 
         assertThat(component.onDetached).isEqualTo(3)
 
         assertThat(activityPanelEntity.addComponent(component)).isTrue()
 
-        activityPanelEntity.disposeInternal()
+        activityPanelEntity.dispose()
 
         assertThat(component.onDetached).isEqualTo(4)
     }
@@ -999,9 +992,9 @@ class EntityTest {
         assertThat(gltfModelEntity.addComponent(component2)).isTrue()
         assertThat(gltfModelEntity.getComponents()).containsExactly(component1, component2)
 
-        assertThat(anchorEntity.addComponent(component1)).isTrue()
-        assertThat(anchorEntity.addComponent(component2)).isTrue()
-        assertThat(anchorEntity.getComponents()).containsExactly(component1, component2)
+        assertThat(anchorSpace.addComponent(component1)).isTrue()
+        assertThat(anchorSpace.addComponent(component2)).isTrue()
+        assertThat(anchorSpace.getComponents()).containsExactly(component1, component2)
 
         assertThat(activityPanelEntity.addComponent(component1)).isTrue()
         assertThat(activityPanelEntity.addComponent(component2)).isTrue()
@@ -1022,26 +1015,24 @@ class EntityTest {
     }
 
     @Test
-    fun surfaceEntity_redirectsCallsToRtEntity() {
+    fun surfaceEntity_setShapeWithSphereRadius() {
         surfaceEntity.stereoMode = SurfaceEntity.StereoMode.TOP_BOTTOM
 
-        assertThat((surfaceEntity.rtEntity as FakeSurfaceEntity).stereoMode).isEqualTo(1)
+        assertThat(surfaceEntity.stereoMode).isEqualTo(SurfaceEntity.StereoMode.TOP_BOTTOM)
 
         surfaceEntity.shape = SurfaceEntity.Shape.Sphere(1.0f)
 
-        val rtSurfaceEntity = surfaceEntity.rtEntity as FakeSurfaceEntity
-        assertThat(rtSurfaceEntity.shape).isInstanceOf(RtSurfaceEntity.Shape.Sphere::class.java)
+        assertThat(surfaceEntity.shape).isInstanceOf(SurfaceEntity.Shape.Sphere::class.java)
 
-        val shape = rtSurfaceEntity.shape as RtSurfaceEntity.Shape.Sphere
+        val shape = surfaceEntity.shape as SurfaceEntity.Shape.Sphere
         assertThat(shape.radius).isEqualTo(1.0f)
     }
 
     @Test
     fun surfaceEntity_getPerceivedResolution_callsRuntimeAndConverts() {
         // Arrange
-        val runtimePixelDimensions = RtPixelDimensions(100, 200)
-        val runtimeResult = RtPerceivedResolutionResult.Success(runtimePixelDimensions)
-        (surfaceEntity.rtEntity as FakeSurfaceEntity).setPerceivedResolution(runtimeResult)
+        surfaceEntityTester.perceivedResolutionResult =
+            PerceivedResolutionResult.Success(IntSize2d(100, 200))
 
         val scenecoreResult = surfaceEntity.getPerceivedResolution(renderViewpoint)
         assertThat(scenecoreResult).isInstanceOf(PerceivedResolutionResult.Success::class.java)
@@ -1055,11 +1046,23 @@ class EntityTest {
         val quad = SurfaceEntity.Shape.Quad(FloatSize2d(1.0f, 1.0f), 0.5f)
         surfaceEntity.shape = quad
 
-        val rtSurfaceEntity = surfaceEntity.rtEntity as FakeSurfaceEntity
-        assertThat(rtSurfaceEntity.shape).isInstanceOf(RtSurfaceEntity.Shape.Quad::class.java)
+        assertThat(surfaceEntity.shape).isInstanceOf(SurfaceEntity.Shape.Quad::class.java)
 
-        val rtShape = rtSurfaceEntity.shape as RtSurfaceEntity.Shape.Quad
-        assertThat(rtShape.cornerRadius).isEqualTo(0.5f)
+        val shape = surfaceEntity.shape as SurfaceEntity.Shape.Quad
+        assertThat(shape.cornerRadius).isEqualTo(0.5f)
+    }
+
+    @Test
+    fun quadShape_cornerRadiusTooLarge_throwsException() {
+        val exception =
+            assertThrows(IllegalArgumentException::class.java) {
+                SurfaceEntity.Shape.Quad(FloatSize2d(2.0f, 4.0f), 1.5f)
+            }
+        assertThat(exception)
+            .hasMessageThat()
+            .contains(
+                "cornerRadius (1.5) must not be greater than half of the smaller dimension (width or height): 1.0"
+            )
     }
 
     @Test
@@ -1214,19 +1217,19 @@ class EntityTest {
 
     @Test
     fun anyEntity_useAfterDisposeRaisesDisposedException() {
-        panelEntity.disposeInternal()
+        panelEntity.dispose()
 
-        surfaceEntity.disposeInternal()
+        surfaceEntity.dispose()
 
-        anchorEntity.disposeInternal()
+        anchorSpace.dispose()
 
-        entity.disposeInternal()
+        entity.dispose()
 
-        activityPanelEntity.disposeInternal()
+        activityPanelEntity.dispose()
 
-        gltfModelEntity.disposeInternal()
+        gltfModelEntity.dispose()
 
-        activitySpace.disposeInternal()
+        activitySpace.dispose()
 
         assertFailsWith<Entity.DisposedException> { surfaceEntity.stereoMode }
         assertFailsWith<Entity.DisposedException> { panelEntity.sizeInPixels }
@@ -1247,33 +1250,48 @@ class EntityTest {
 
     @Test
     fun allEntity_disposeTwiceDoesNotCrash() {
-        panelEntity.disposeInternal()
+        panelEntity.dispose()
 
-        panelEntity.disposeInternal()
+        panelEntity.dispose()
 
-        surfaceEntity.disposeInternal()
+        surfaceEntity.dispose()
 
-        surfaceEntity.disposeInternal()
+        surfaceEntity.dispose()
 
-        anchorEntity.disposeInternal()
+        anchorSpace.dispose()
 
-        anchorEntity.disposeInternal()
+        anchorSpace.dispose()
 
-        entity.disposeInternal()
+        entity.dispose()
 
-        entity.disposeInternal()
+        entity.dispose()
 
-        activityPanelEntity.disposeInternal()
+        activityPanelEntity.dispose()
 
-        activityPanelEntity.disposeInternal()
+        activityPanelEntity.dispose()
 
-        gltfModelEntity.disposeInternal()
+        gltfModelEntity.dispose()
 
-        gltfModelEntity.disposeInternal()
+        gltfModelEntity.dispose()
 
-        activitySpace.disposeInternal()
+        activitySpace.dispose()
 
-        activitySpace.disposeInternal()
+        activitySpace.dispose()
+    }
+
+    @Test
+    fun allEntity_dispose_disposesChildrenRecursively() {
+        val parent = Entity.create(session)
+        val child1 = Entity.create(session, parent = parent)
+        val child2 = Entity.create(session, parent = parent)
+        val grandchild = Entity.create(session, parent = child1)
+
+        parent.dispose()
+
+        assertThat(parent.isDisposed).isTrue()
+        assertThat(child1.isDisposed).isTrue()
+        assertThat(child2.isDisposed).isTrue()
+        assertThat(grandchild.isDisposed).isTrue()
     }
 
     @Test
@@ -1303,7 +1321,7 @@ class EntityTest {
     fun isDisposed_falseForNewEntity() {
         assertThat(panelEntity.isDisposed).isFalse()
         assertThat(surfaceEntity.isDisposed).isFalse()
-        assertThat(anchorEntity.isDisposed).isFalse()
+        assertThat(anchorSpace.isDisposed).isFalse()
         assertThat(entity.isDisposed).isFalse()
         assertThat(activityPanelEntity.isDisposed).isFalse()
         assertThat(gltfModelEntity.isDisposed).isFalse()
@@ -1312,23 +1330,23 @@ class EntityTest {
 
     @Test
     fun isDisposed_trueAfterDispose() {
-        panelEntity.disposeInternal()
+        panelEntity.dispose()
 
-        surfaceEntity.disposeInternal()
+        surfaceEntity.dispose()
 
-        anchorEntity.disposeInternal()
+        anchorSpace.dispose()
 
-        entity.disposeInternal()
+        entity.dispose()
 
-        activityPanelEntity.disposeInternal()
+        activityPanelEntity.dispose()
 
-        gltfModelEntity.disposeInternal()
+        gltfModelEntity.dispose()
 
-        activitySpace.disposeInternal()
+        activitySpace.dispose()
 
         assertThat(panelEntity.isDisposed).isTrue()
         assertThat(surfaceEntity.isDisposed).isTrue()
-        assertThat(anchorEntity.isDisposed).isTrue()
+        assertThat(anchorSpace.isDisposed).isTrue()
         assertThat(entity.isDisposed).isTrue()
         assertThat(activityPanelEntity.isDisposed).isTrue()
         assertThat(gltfModelEntity.isDisposed).isTrue()
@@ -1343,7 +1361,7 @@ class EntityTest {
         gltfModelEntityTester.addAnimation(animation1)
         gltfModelEntityTester.addAnimation(animation2)
 
-        val animations = gltfModelEntity.animations
+        val animations = gltfModelEntity.getAnimations()
 
         assertThat(animations).hasSize(2)
         assertThat(animations[0].name).isEqualTo("anim1")
@@ -1355,7 +1373,7 @@ class EntityTest {
     fun gltfModelEntity_startAnimation_startsAnimation() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val animations = gltfModelEntity.animations
+        val animations = gltfModelEntity.getAnimations()
         val gltfAnimation = animations[0]
 
         gltfAnimation.start()
@@ -1368,7 +1386,7 @@ class EntityTest {
     fun gltfModelEntity_startAnimation_withOptions_startsAnimationWithOptions() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val animations = gltfModelEntity.animations
+        val animations = gltfModelEntity.getAnimations()
         val gltfAnimation = animations[0]
 
         gltfAnimation.start(
@@ -1389,7 +1407,7 @@ class EntityTest {
     fun gltfAnimation_startAnimation_negativeSeekTime_throwsException() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val gltfAnimation = gltfModelEntity.animations[0]
+        val gltfAnimation = gltfModelEntity.getAnimations()[0]
 
         assertThrows(IllegalArgumentException::class.java) {
             gltfAnimation.start(
@@ -1403,7 +1421,7 @@ class EntityTest {
     fun gltfModelEntity_stopAnimation_stopsAnimation() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val animations = gltfModelEntity.animations
+        val animations = gltfModelEntity.getAnimations()
         val gltfAnimation = animations[0]
 
         gltfAnimation.start()
@@ -1417,7 +1435,7 @@ class EntityTest {
     fun gltfModelEntity_pauseAnimation_pausesAnimation() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val animations = gltfModelEntity.animations
+        val animations = gltfModelEntity.getAnimations()
         val gltfAnimation = animations[0]
 
         gltfAnimation.start()
@@ -1431,7 +1449,7 @@ class EntityTest {
     fun gltfModelEntity_resumeAnimation_resumesAnimation() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val animations = gltfModelEntity.animations
+        val animations = gltfModelEntity.getAnimations()
         val gltfAnimation = animations[0]
 
         gltfAnimation.start()
@@ -1446,7 +1464,7 @@ class EntityTest {
     fun gltfModelEntity_setSpeed_setsAnimationSpeed() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val animations = gltfModelEntity.animations
+        val animations = gltfModelEntity.getAnimations()
         val gltfAnimation = animations[0]
 
         gltfAnimation.start()
@@ -1460,7 +1478,7 @@ class EntityTest {
     fun gltfModelEntity_seekTo_seeksAnimation() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val animations = gltfModelEntity.animations
+        val animations = gltfModelEntity.getAnimations()
         val gltfAnimation = animations[0]
 
         gltfAnimation.start()
@@ -1474,7 +1492,7 @@ class EntityTest {
     fun gltfAnimation_seekTo_negativeTime_throwsException() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val gltfAnimation = gltfModelEntity.animations[0]
+        val gltfAnimation = gltfModelEntity.getAnimations()[0]
 
         gltfAnimation.start()
         assertThrows(IllegalArgumentException::class.java) {
@@ -1487,7 +1505,7 @@ class EntityTest {
     fun gltfAnimation_animationStateListener_receivesUpdates() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val gltfAnimation = gltfModelEntity.animations[0]
+        val gltfAnimation = gltfModelEntity.getAnimations()[0]
 
         var state: GltfAnimation.AnimationState? = null
         gltfAnimation.addAnimationStateListener { state = it }
@@ -1510,7 +1528,7 @@ class EntityTest {
     fun gltfAnimation_removeAnimationStateListener_stopsUpdates() {
         val animation = TestGltfAnimation.Builder().setAnimationName("anim1").build()
         gltfModelEntityTester.addAnimation(animation)
-        val gltfAnimation = gltfModelEntity.animations[0]
+        val gltfAnimation = gltfModelEntity.getAnimations()[0]
 
         var state: GltfAnimation.AnimationState? = null
         val listener = java.util.function.Consumer<GltfAnimation.AnimationState> { state = it }
@@ -1612,19 +1630,6 @@ class EntityTest {
         }
 
         val entityRef = createActivityPanelEntity()
-        assertThat(entityRef.get()).isNotNull()
-
-        MemoryUtils.assertGarbageCollected(entityRef)
-    }
-
-    @Test
-    fun groupEntity_garbageCollection_disposesEntity() {
-        fun createGroupEntity(): WeakReference<GroupEntity> {
-            @Suppress("DEPRECATION") val entity = GroupEntity.create(session, "test", parent = null)
-            return WeakReference(entity)
-        }
-
-        val entityRef = createGroupEntity()
         assertThat(entityRef.get()).isNotNull()
 
         MemoryUtils.assertGarbageCollected(entityRef)
@@ -1754,11 +1759,11 @@ class EntityTest {
 
         assertThat(entity.isDisposed).isFalse()
 
-        entity.disposeInternal()
+        entity.dispose()
         assertThat(entity.isDisposed).isTrue()
 
         // Calling again should not throw
-        entity.disposeInternal()
+        entity.dispose()
         assertThat(entity.isDisposed).isTrue()
     }
 
@@ -1785,14 +1790,16 @@ class EntityTest {
     }
 
     @Test
-    fun dispose_setsParentToNull() {
+    fun dispose_removesFromParentAndDisposes() {
         val parentEntity = Entity.create(session, "parent")
         val childEntity = Entity.create(session, "child", parent = parentEntity)
 
         assertThat(childEntity.parent).isEqualTo(parentEntity)
+        assertThat(parentEntity.children).contains(childEntity)
 
         childEntity.dispose()
 
-        assertThat(childEntity.parent).isNull()
+        assertThat(childEntity.isDisposed).isTrue()
+        assertThat(parentEntity.children).doesNotContain(childEntity)
     }
 }

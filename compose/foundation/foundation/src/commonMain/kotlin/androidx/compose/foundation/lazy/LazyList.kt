@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.layout.calculateLazyLayoutPinnedIndices
 import androidx.compose.foundation.lazy.layout.lazyLayoutBeyondBoundsModifier
 import androidx.compose.foundation.lazy.layout.lazyLayoutItemAnimator
 import androidx.compose.foundation.lazy.layout.lazyLayoutSemantics
+import androidx.compose.foundation.lazy.layout.rememberLazyLayoutBringIntoViewSpec
 import androidx.compose.foundation.scrollableArea
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -127,6 +128,11 @@ internal fun LazyList(
             Modifier
         }
 
+    val bringIntoViewSpec =
+        rememberLazyLayoutBringIntoViewSpec(reverseLayout, isVertical) {
+            state.layoutInfoState.value.stickingItemsCombinedSize
+        }
+
     LazyLayout(
         modifier =
             modifier
@@ -149,6 +155,7 @@ internal fun LazyList(
                     flingBehavior = flingBehavior,
                     interactionSource = state.internalInteractionSource,
                     overscrollEffect = overscrollEffect,
+                    bringIntoViewSpec = bringIntoViewSpec,
                 ),
         prefetchState = state.prefetchState,
         measurePolicy = measurePolicy,
@@ -409,11 +416,11 @@ private fun CacheWindowLogic.keepAroundItems(
             val lastVisibleItemIndex = visibleItemsList.last().index
             // we must send a message in case of changing directions for items
             // that were keep around and become prefetch forward
-            for (item in prefetchWindowStartLine..<firstVisibleItemIndex) {
+            for (item in perLaneCacheWindowStartIndex[0]..<firstVisibleItemIndex) {
                 measuredItemProvider.keepAround(item)
             }
 
-            for (item in (lastVisibleItemIndex + 1)..prefetchWindowEndLine) {
+            for (item in (lastVisibleItemIndex + 1)..perLaneCacheWindowEndItemIndex[0]) {
                 measuredItemProvider.keepAround(item)
             }
         }

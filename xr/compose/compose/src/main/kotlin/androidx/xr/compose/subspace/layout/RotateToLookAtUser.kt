@@ -15,8 +15,6 @@
  */
 package androidx.xr.compose.subspace.layout
 
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
 import androidx.xr.arcore.ArDevice
 import androidx.xr.compose.platform.LocalSession
 import androidx.xr.compose.spatial.LocalSubspaceRootNode
@@ -33,6 +31,7 @@ import androidx.xr.runtime.math.Pose
 import androidx.xr.runtime.math.Quaternion
 import androidx.xr.runtime.math.Vector3
 import androidx.xr.scenecore.Entity
+import androidx.xr.scenecore.PixelDensity
 import androidx.xr.scenecore.scene
 import kotlin.math.atan2
 import kotlinx.coroutines.Job
@@ -59,7 +58,7 @@ public annotation class ExperimentalRotateToLookAtUserApi
  * A user of this API should configure the activity's Session object with
  * [DeviceTrackingMode.SPATIAL] which requires `android.permission.HEAD_TRACKING` Android permission
  * be granted by the calling application. `session.configure( config =
- * session.config.copy(deviceTracking = DeviceTrackingMode.SPATIAL) )`
+ * Config.Builder(session.config).setDeviceTracking(DeviceTrackingMode.SPATIAL).build() )`
  *
  * This modifier might not work as expected when used on content within a
  * [androidx.xr.compose.spatial.FollowingSubspace].
@@ -108,25 +107,25 @@ internal class RotateToLookAtUserNode(var upDirection: Vector3) :
     SubspaceLayoutAwareModifierNode,
     CompositionLocalConsumerSubspaceModifierNode {
     private lateinit var session: Session
+    private lateinit var spatialDensity: PixelDensity
     private lateinit var arDevice: ArDevice
     private var headPoseJob: Job? = null
     private var currentHeadPose: Pose = Pose()
 
-    private inline val localDensity: Density
-        get() = currentValueOf(LocalDensity)
-
-    @Suppress("RestrictedApiAndroidX")
     override fun onAttach() {
         super.onAttach()
+
         // Initialize the Session and ArDevice once when the node is attached
         session =
             checkNotNull(currentValueOf(LocalSession)) {
                 "LocalSession must be available during onAttach."
             }
+        spatialDensity = session.scene.virtualPixelDensity
 
         if (session.config.deviceTracking == DeviceTrackingMode.DISABLED) {
             return
         }
+
         arDevice = ArDevice.getInstance(session)
     }
 
@@ -148,8 +147,7 @@ internal class RotateToLookAtUserNode(var upDirection: Vector3) :
             val rootFromNodePixels: Pose = coordinates?.poseInRoot ?: Pose.Identity
 
             // Convert the node's pose in Compose root from pixels to meters.
-            val rootFromNodeMeters: Pose =
-                rootFromNodePixels.convertPixelsToMeters(density = localDensity)
+            val rootFromNodeMeters: Pose = rootFromNodePixels.pxToMeters(spatialDensity)
 
             // Fetch the root node directly from composition locals.
             val rootNode: Entity? = currentValueOf(LocalSubspaceRootNode)

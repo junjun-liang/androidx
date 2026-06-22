@@ -1,10 +1,10 @@
 package com.testdata
 
 import androidx.appfunctions.AppFunctionService
-import androidx.appfunctions.service.AppFunctionEntryPoint
-import androidx.appfunctions.service.AppFunction
+import androidx.appfunctions.AppFunctionServiceEntryPoint
+import androidx.appfunctions.AppFunction
 
-@AppFunctionEntryPoint("MySimpleService", "my_simple_service.xml")
+@AppFunctionServiceEntryPoint("MySimpleService", "my_simple_service")
 abstract class SimpleEntryPoint: AppFunctionService() {
     /**
      * simple function.

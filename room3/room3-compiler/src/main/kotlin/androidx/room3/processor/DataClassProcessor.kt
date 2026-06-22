@@ -22,13 +22,17 @@ import androidx.room3.Ignore
 import androidx.room3.PrimaryKey
 import androidx.room3.Relation
 import androidx.room3.compiler.processing.XExecutableElement
-import androidx.room3.compiler.processing.XFieldElement
+import androidx.room3.compiler.processing.XPropertyElement
 import androidx.room3.compiler.processing.XType
 import androidx.room3.compiler.processing.XTypeElement
 import androidx.room3.compiler.processing.XVariableElement
 import androidx.room3.compiler.processing.isVoid
+import androidx.room3.ext.getAnnotationOnPropertyOrField
+import androidx.room3.ext.hasAnnotationOnPropertyOrField
+import androidx.room3.ext.hasAnyAnnotationOnPropertyOrField
 import androidx.room3.ext.isCollection
 import androidx.room3.ext.isNotVoid
+import androidx.room3.ext.requireAnnotationOnPropertyOrField
 import androidx.room3.processor.ProcessorErrors.CANNOT_FIND_GETTER_FOR_PROPERTY
 import androidx.room3.processor.ProcessorErrors.CANNOT_FIND_SETTER_FOR_PROPERTY
 import androidx.room3.processor.autovalue.AutoValueDataClassProcessorDelegate
@@ -131,12 +135,12 @@ private constructor(
         // TODO handle conflicts with super: b/35568142
         val allProperties =
             element
-                .getAllFieldsIncludingPrivateSupers()
+                .getAllPropertiesIncludingPrivateSupers()
                 .filter {
-                    !it.hasAnnotation(Ignore::class) &&
+                    !it.hasAnnotationOnPropertyOrField(Ignore::class) &&
                         !it.isStatic() &&
                         (!it.isTransient() ||
-                            it.hasAnyAnnotation(
+                            it.hasAnyAnnotationOnPropertyOrField(
                                 ColumnInfo::class,
                                 Embedded::class,
                                 Relation::class,
@@ -144,13 +148,15 @@ private constructor(
                 }
                 .groupBy { property ->
                     context.checker.check(
-                        PROCESSED_ANNOTATIONS.count { property.hasAnnotation(it) } < 2,
+                        PROCESSED_ANNOTATIONS.count {
+                            property.hasAnnotationOnPropertyOrField(it)
+                        } < 2,
                         property,
                         ProcessorErrors.CANNOT_USE_MORE_THAN_ONE_DATA_CLASS_PROPERTY_ANNOTATION,
                     )
-                    if (property.hasAnnotation(Embedded::class)) {
+                    if (property.hasAnnotationOnPropertyOrField(Embedded::class)) {
                         Embedded::class
-                    } else if (property.hasAnnotation(Relation::class)) {
+                    } else if (property.hasAnnotationOnPropertyOrField(Relation::class)) {
                         Relation::class
                     } else {
                         null
@@ -302,6 +308,7 @@ private constructor(
                         constructor.parameters.mapIndexed param@{ index, param ->
                             val paramName = parameterNames[index]
                             val paramType = param.type
+                            val hasDefaultValue = param.hasDefaultValue
 
                             val matches =
                                 fun(property: Property?): Boolean {
@@ -317,15 +324,27 @@ private constructor(
 
                             val exactPropertyMatch = propertyMap[paramName]
                             if (matches(exactPropertyMatch)) {
-                                return@param Constructor.Param.PropertyParam(exactPropertyMatch!!)
+                                return@param Constructor.Param.PropertyParam(
+                                    paramName,
+                                    hasDefaultValue,
+                                    exactPropertyMatch!!,
+                                )
                             }
                             val exactEmbeddedMatch = embeddedMap[paramName]
                             if (matches(exactEmbeddedMatch?.property)) {
-                                return@param Constructor.Param.EmbeddedParam(exactEmbeddedMatch!!)
+                                return@param Constructor.Param.EmbeddedParam(
+                                    paramName,
+                                    hasDefaultValue,
+                                    exactEmbeddedMatch!!,
+                                )
                             }
                             val exactRelationMatch = relationMap[paramName]
                             if (matches(exactRelationMatch?.property)) {
-                                return@param Constructor.Param.RelationParam(exactRelationMatch!!)
+                                return@param Constructor.Param.RelationParam(
+                                    paramName,
+                                    hasDefaultValue,
+                                    exactRelationMatch!!,
+                                )
                             }
 
                             val matchingProperties = myProperties.filter { matches(it) }
@@ -336,17 +355,34 @@ private constructor(
                                     embeddedMatches.size +
                                     relationMatches.size
                             ) {
-                                0 -> null
+                                0 ->
+                                    if (hasDefaultValue) {
+                                        Constructor.Param.UnmatchedDefaultValueParam(paramName)
+                                    } else {
+                                        null
+                                    }
                                 1 ->
                                     when {
                                         matchingProperties.isNotEmpty() ->
                                             Constructor.Param.PropertyParam(
-                                                matchingProperties.first()
+                                                paramName,
+                                                hasDefaultValue,
+                                                matchingProperties.first(),
                                             )
-                                        embeddedMatches.isNotEmpty() ->
-                                            Constructor.Param.EmbeddedParam(embeddedMatches.first())
-                                        else ->
-                                            Constructor.Param.RelationParam(relationMatches.first())
+                                        embeddedMatches.isNotEmpty() -> {
+                                            Constructor.Param.EmbeddedParam(
+                                                paramName,
+                                                hasDefaultValue,
+                                                embeddedMatches.first(),
+                                            )
+                                        }
+                                        else -> {
+                                            Constructor.Param.RelationParam(
+                                                paramName,
+                                                hasDefaultValue,
+                                                relationMatches.first(),
+                                            )
+                                        }
                                     }
                                 else -> {
                                     context.logger.e(
@@ -422,7 +458,7 @@ private constructor(
 
     private fun processEmbeddedProperty(
         declaredType: XType,
-        variableElement: XFieldElement,
+        variableElement: XPropertyElement,
     ): EmbeddedProperty? {
         val asMemberType = variableElement.asMemberOf(declaredType)
         val asTypeElement = asMemberType.typeElement
@@ -438,7 +474,7 @@ private constructor(
             return null
         }
 
-        val embeddedAnnotation = variableElement.getAnnotation(Embedded::class)
+        val embeddedAnnotation = variableElement.getAnnotationOnPropertyOrField(Embedded::class)
         val propertyPrefix = embeddedAnnotation?.get("prefix")?.asString() ?: ""
         val inheritedPrefix = parent?.prefix ?: ""
         val embeddedProperty =
@@ -470,9 +506,9 @@ private constructor(
     private fun processRelationProperty(
         myProperties: List<Property>,
         container: XType,
-        relationElement: XFieldElement,
+        relationElement: XPropertyElement,
     ): androidx.room3.vo.Relation? {
-        val annotation = relationElement.requireAnnotation(Relation::class)
+        val annotation = relationElement.requireAnnotationOnPropertyOrField(Relation::class)
 
         val parentColumnNames = annotation["parentColumns"]?.asStringList() ?: emptyList()
         if (parentColumnNames.isEmpty()) {
@@ -989,7 +1025,7 @@ private constructor(
         assignFromMethod: (DataClassFunction) -> Unit,
         reportAmbiguity: (List<String>) -> Unit,
     ): Boolean {
-        if (property.element.isPublic()) {
+        if (property.element.backingField?.isPublic() == true) {
             assignFromField()
             return true
         }

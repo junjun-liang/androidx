@@ -38,9 +38,27 @@ internal constructor(@get:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) public val 
     internal fun toRtSoundEffect(): RtSoundEffect {
         return RtSoundEffect(id)
     }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as SoundEffect
+
+        return id == other.id
+    }
+
+    override fun hashCode(): Int {
+        return id
+    }
+
+    override fun toString(): String {
+        return "SoundEffect(id=$id)"
+    }
 }
 
-internal fun RtSoundEffect.toSoundEffect(): SoundEffect {
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+public fun RtSoundEffect.toSoundEffect(): SoundEffect {
     return SoundEffect(this.id)
 }
 
@@ -61,17 +79,12 @@ public class SoundEffectPool private constructor(sceneRuntime: SceneRuntime, max
             listener.onLoadComplete(event.first, event.second)
         }
 
-    // TODO - b/502272748: This can be removed when we delete the deprecated setListener method
-    // The deprecated version only ever uses the mainThreadExecutor, so it doesn't need a property.
-    private var loadCompleteListener: LoadCompleteListener? = null
-
     init {
         rtSoundEffectPool.setOnLoadCompleteListener(HandlerExecutor.mainThreadExecutor) {
             rtSoundEffect: RtSoundEffect,
             success ->
             var soundEffect = rtSoundEffect.toSoundEffect()
             loadCompleteListeners.fire(Pair(soundEffect, success))
-            loadCompleteListener?.onLoadComplete(soundEffect, success)
         }
     }
 
@@ -147,20 +160,6 @@ public class SoundEffectPool private constructor(sceneRuntime: SceneRuntime, max
         loadCompleteListeners.remove(listener)
     }
 
-    /**
-     * Sets the [listener] to be notified when sounds finish loading. The listener will be called on
-     * the main thread.
-     */
-    // TODO - b/502272748: Cleanup deprecated listener methods
-    @Deprecated(
-        "Use addLoadCompleteListener",
-        replaceWith = ReplaceWith("addLoadCompleteListener()"),
-    )
-    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-    public fun setOnLoadCompleteListener(listener: LoadCompleteListener) {
-        loadCompleteListener = listener
-    }
-
     /** Releases all native resources associated with this pool. */
     public fun release() {
         return rtSoundEffectPool.release()
@@ -169,7 +168,6 @@ public class SoundEffectPool private constructor(sceneRuntime: SceneRuntime, max
     override fun close() {
         rtSoundEffectPool.clearOnLoadCompleteListener()
         loadCompleteListeners.clear()
-        loadCompleteListener = null
         release()
     }
 

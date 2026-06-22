@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+@file:kotlin.OptIn(
+    androidx.xr.scenecore.ExperimentalGltfAnimationApi::class,
+    androidx.xr.compose.subspace.ExperimentalSpatialGltfAnimationApi::class,
+)
+
 package androidx.xr.compose.testapp.spatialgltfmodel
 
 import android.annotation.SuppressLint
@@ -60,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.xr.compose.platform.LocalSession
@@ -74,6 +80,7 @@ import androidx.xr.compose.subspace.SpatialMainPanel
 import androidx.xr.compose.subspace.SpatialPanel
 import androidx.xr.compose.subspace.SpatialRow
 import androidx.xr.compose.subspace.SubspaceComposable
+import androidx.xr.compose.subspace.layout.MovePolicy
 import androidx.xr.compose.subspace.layout.SpatialMoveEvent
 import androidx.xr.compose.subspace.layout.SpatialRoundedCornerShape
 import androidx.xr.compose.subspace.layout.SubspaceModifier
@@ -83,11 +90,9 @@ import androidx.xr.compose.subspace.layout.heightIn
 import androidx.xr.compose.subspace.layout.movable
 import androidx.xr.compose.subspace.layout.offset
 import androidx.xr.compose.subspace.layout.rotate
-import androidx.xr.compose.subspace.layout.transformingMovable
 import androidx.xr.compose.subspace.layout.width
 import androidx.xr.compose.subspace.rememberSpatialGltfModelState
 import androidx.xr.compose.testapp.ui.components.CommonTestScaffold
-import androidx.xr.compose.unit.Meter
 import androidx.xr.runtime.Session
 import androidx.xr.runtime.math.Pose
 import androidx.xr.runtime.math.Quaternion
@@ -95,6 +100,8 @@ import androidx.xr.runtime.math.Vector3
 import androidx.xr.scenecore.AlphaMode
 import androidx.xr.scenecore.GltfModelNode
 import androidx.xr.scenecore.KhronosPbrMaterial
+import androidx.xr.scenecore.PixelDensity
+import androidx.xr.scenecore.scene
 import java.nio.file.Paths
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.milliseconds
@@ -114,10 +121,8 @@ class SpatialGltfModelActivity : ComponentActivity() {
 
     @Composable
     fun SpatialContent(state: DragonControlState) {
-        val session = LocalSession.current
-        LaunchedEffect(session) {
-            state.initializeSession(checkNotNull(session) { "session must be initialized" })
-        }
+        val session = LocalSession.current ?: return
+        LaunchedEffect(session) { state.initializeSession(session) }
 
         SpatialRow {
             DragonModel(state = state, modifier = SubspaceModifier.fillMaxWidth(0.7f))
@@ -246,7 +251,12 @@ class SpatialGltfModelActivity : ComponentActivity() {
                                         if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     modifier =
                                         Modifier.fillMaxWidth()
-                                            .clickable { state.selectedAnimation = animation }
+                                            .clickable {
+                                                if (state.selectedAnimation != animation) {
+                                                    state.selectedAnimation?.stop()
+                                                }
+                                                state.selectedAnimation = animation
+                                            }
                                             .background(
                                                 if (isSelected) Color.Blue.copy(alpha = 0.2f)
                                                 else Color.Transparent
@@ -419,6 +429,8 @@ class SpatialGltfModelActivity : ComponentActivity() {
     @Composable
     @SubspaceComposable
     fun DragonModel(state: DragonControlState, modifier: SubspaceModifier = SubspaceModifier) {
+        val session = checkNotNull(LocalSession.current) { "session must be initialized" }
+        val pixelDensity = remember { session.scene.virtualPixelDensity }
         val dragonModelState =
             rememberSpatialGltfModelState(
                 source = SpatialGltfModelSource.fromPath(Paths.get("models", "Dragon_Evolved.gltf"))
@@ -439,9 +451,9 @@ class SpatialGltfModelActivity : ComponentActivity() {
             val deltaRot = event.previousPose.rotation.inverse * event.pose.rotation
 
             with(density) {
-                state.customX += deltaX.toDp()
-                state.customY += deltaY.toDp()
-                state.customZ += deltaZ.toDp()
+                state.customX += pixelDensity.convertMetersToPixels(deltaX).toDp()
+                state.customY += pixelDensity.convertMetersToPixels(deltaY).toDp()
+                state.customZ += pixelDensity.convertMetersToPixels(deltaZ).toDp()
             }
             state.customRotation *= deltaRot
         }
@@ -453,9 +465,12 @@ class SpatialGltfModelActivity : ComponentActivity() {
                 modifier
                     .offset(x = state.customX, y = state.customY, z = state.customZ)
                     .rotate(state.customRotation)
-                    .movable(scaleWithDistance = false, onMove = customMovement)
+                    .movable(
+                        movePolicy =
+                            MovePolicy.custom(scaleWithDistance = false, onMove = customMovement)
+                    )
             } else {
-                modifier.transformingMovable(scaleWithDistance = false)
+                modifier.movable(movePolicy = MovePolicy.default(scaleWithDistance = false))
             }
 
         SpatialGltfModel(state = dragonModelState, modifier = movementModifier) {
@@ -464,6 +479,8 @@ class SpatialGltfModelActivity : ComponentActivity() {
                 val nodeOffset =
                     createSpatialOffset(
                         translation = selectedNode.modelPose.translation,
+                        pixelDensity = pixelDensity,
+                        density = density,
                         rotation = if (state.useRotation) selectedNode.modelPose.rotation else null,
                     )
 
@@ -492,6 +509,23 @@ class SpatialGltfModelActivity : ComponentActivity() {
         }
     }
 
+    /** Converts a 3D translation to a SubspaceOffset. */
+    fun createSpatialOffset(
+        translation: Vector3,
+        pixelDensity: PixelDensity,
+        density: Density,
+        rotation: Quaternion? = null,
+    ): SubspaceModifier {
+        return with(density) {
+            SubspaceModifier.offset(
+                    x = pixelDensity.convertMetersToPixels(translation.x).toDp(),
+                    y = pixelDensity.convertMetersToPixels(translation.y).toDp(),
+                    z = pixelDensity.convertMetersToPixels(translation.z).toDp(),
+                )
+                .let { if (rotation != null) it.rotate(rotation) else it }
+        }
+    }
+
     data class TransformData(
         val translation: Vector3 = Vector3(0f, 0f, 0f),
         val rotationEuler: Vector3 = Vector3(0f, 0f, 0f),
@@ -504,7 +538,7 @@ class SpatialGltfModelActivity : ComponentActivity() {
             get() = dragonModelState?.nodes ?: emptyList()
 
         val animations: List<SpatialGltfModelAnimation>
-            get() = dragonModelState?.animations ?: emptyList()
+            get() = dragonModelState?.getAnimations() ?: emptyList()
 
         var selectedNode by mutableStateOf<GltfModelNode?>(null)
 
@@ -622,16 +656,6 @@ class SpatialGltfModelActivity : ComponentActivity() {
             node.localPose = Pose(translation, rotationQuat)
             node.localScale = scale
         }
-    }
-
-    /** Converts a 3D translation to a SubspaceOffset. */
-    fun createSpatialOffset(translation: Vector3, rotation: Quaternion? = null): SubspaceModifier {
-        return SubspaceModifier.offset(
-                x = Meter(translation.x).toDp(),
-                y = Meter(translation.y).toDp(),
-                z = Meter(translation.z).toDp(),
-            )
-            .let { if (rotation != null) it.rotate(rotation) else it }
     }
 }
 

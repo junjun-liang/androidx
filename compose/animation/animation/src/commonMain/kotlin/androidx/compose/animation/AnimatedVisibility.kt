@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -628,11 +629,13 @@ public fun <T> Transition<T>.AnimatedVisibility(
  * [DeferredTransitionState.defer] is called and ends when [DeferredTransitionState.animateTo] is
  * called to start the automatic transition. During this phase, you can manually manipulate the
  * content's transformations (like [TransformScope.alpha] and [TransformScope.scale]). These
- * transformations are applied **on top of** the transition's initial state. Once the transition
- * starts, the manually applied transformations are seamlessly handed off to the configured [enter]
- * and [exit] transitions. For exiting content, a "sustain unless specified" policy is applied: if
- * an exit transition (e.g. `fadeOut`) is specified, the hand-off will animate towards the target
- * value of that transition. However, if no exit transition is specified for a given property (e.g.
+ * transformations are combined with (i.e., applied on top of) the transition's initial state.
+ * Properties like alpha and scale are applied multiplicatively, while offset is applied additively.
+ * Properties that are not manually set default to the transition's values. Once the transition
+ * starts, the manually applied transformations are handed off to the configured [enter] and [exit]
+ * transitions. For exiting content, a "sustain unless specified" policy is applied: if an exit
+ * transition (e.g. `fadeOut`) is specified, the hand-off will animate towards the target value of
+ * that transition. However, if no exit transition is specified for a given property (e.g.
  * `slideOut` is missing), that property will sustain its last manual value until the entire
  * transition completes. While in the deferred phase, entering content remains in the
  * [EnterExitState.PreEnter] state, and exiting content remains in the [EnterExitState.Visible]
@@ -737,10 +740,11 @@ public interface AnimatedVisibilityScope {
 }
 
 internal class AnimatedVisibilityScopeImpl
-internal constructor(transition: Transition<EnterExitState>) : AnimatedVisibilityScope {
-    override var transition = transition
+internal constructor(
+    override var transition: Transition<EnterExitState>,
+    internal val sharedMutableTransformState: SharedMutableTransformState,
+) : AnimatedVisibilityScope {
     internal val targetSize = mutableStateOf(IntSize.Zero)
-    internal val sharedMutableTransformState = SharedMutableTransformState()
 }
 
 /**
@@ -796,11 +800,14 @@ internal fun <T> AnimatedEnterExitImpl(
     shouldDisposeBlock: (EnterExitState, EnterExitState) -> Boolean,
     onLookaheadMeasured: OnLookaheadMeasured? = null,
     mutableTransformData: MutableTransform? = null,
+    forceVisible: Boolean = false,
     content: @Composable() AnimatedVisibilityScope.() -> Unit,
 ) {
     val localPendingTargetState = transition.pendingTargetState
+
     if (
-        visible(transition.targetState) ||
+        forceVisible ||
+            visible(transition.targetState) ||
             visible(transition.currentState) ||
             (localPendingTargetState != null && visible(localPendingTargetState)) ||
             transition.isSeeking ||
@@ -811,14 +818,18 @@ internal fun <T> AnimatedEnterExitImpl(
                 transition.targetEnterExit(visible, it)
             }
 
+        val sharedState = remember(transition) { SharedMutableTransformState() }
+        sharedState.mutableData = mutableTransformData
+        val activeMutableState = childTransition.trackActiveMutableState(sharedState)
+
         // Hoist the active enter/exit tracking to this scope to survive the temporary disposal
         // of the Layout and its modifiers when an exit transition finishes. If an interruption
         // occurs (e.g. A -> B -> A) after the layout for A has been removed, the hoisted
         // tracking preserves the original exit boundaries. Without this, the tracking would
         // re-initialize with the new parameters (which could be ExitTransition.None in
         // AnimatedContent), causing the animation to lose its start/end values and snap.
-        val activeEnter = childTransition.trackActiveEnter(enter)
-        val activeExit = childTransition.trackActiveExit(exit)
+        val activeEnter = childTransition.trackActiveEnter(enter, activeMutableState)
+        val activeExit = childTransition.trackActiveExit(exit, activeMutableState)
 
         val shouldDisposeBlockUpdated by rememberUpdatedState(shouldDisposeBlock)
 
@@ -842,8 +853,8 @@ internal fun <T> AnimatedEnterExitImpl(
             }
 
         if (!childTransition.exitFinished || !shouldDisposeAfterExit) {
-            val scope = remember(transition) { AnimatedVisibilityScopeImpl(childTransition) }
-            scope.sharedMutableTransformState.mutableData = mutableTransformData
+            val scope =
+                remember(transition) { AnimatedVisibilityScopeImpl(childTransition, sharedState) }
             Layout(
                 content = { scope.content() },
                 modifier =
@@ -853,7 +864,7 @@ internal fun <T> AnimatedEnterExitImpl(
                                 activeEnter,
                                 activeExit,
                                 trackActiveEnterExit = false,
-                                sharedMutableTransformState = scope.sharedMutableTransformState,
+                                sharedMutableTransformState = activeMutableState,
                                 label = "Built-in",
                             )
                             .then(
@@ -946,11 +957,15 @@ private fun <T> Transition<T>.targetEnterExit(
             }
         } else {
             val hasBeenVisible = remember { mutableStateOf(false) }
-            if (visible(currentState)) {
+            val localPendingTargetState = pendingTargetState
+
+            if (
+                visible(currentState) ||
+                    (localPendingTargetState != null && visible(localPendingTargetState))
+            ) {
                 hasBeenVisible.value = true
             }
 
-            val localPendingTargetState = pendingTargetState
             if (visible(targetState)) {
                 EnterExitState.Visible
             } else if (localPendingTargetState != null && visible(localPendingTargetState)) {

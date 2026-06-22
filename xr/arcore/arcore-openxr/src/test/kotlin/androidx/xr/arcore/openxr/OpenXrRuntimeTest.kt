@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-@file:OptIn(androidx.xr.runtime.PreviewSpatialApi::class)
-
 package androidx.xr.arcore.openxr
 
 import androidx.activity.ComponentActivity
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.xr.runtime.Config
+import androidx.xr.runtime.GeospatialMode
 import androidx.xr.runtime.HandTrackingMode
 import androidx.xr.runtime.manifest.HAND_TRACKING
 import com.google.common.truth.Truth.assertThat
@@ -58,14 +57,14 @@ class OpenXrRuntimeTest {
         check(underTest.config.handTracking == HandTrackingMode.DISABLED)
 
         assertFailsWith<SecurityException> {
-            underTest.configure(Config(handTracking = HandTrackingMode.BOTH))
+            underTest.configure(Config.Builder().setHandTracking(HandTrackingMode.BOTH).build())
         }
     }
 
     @Test
     fun configure_withInertial_throwsUnsupportedOperationException() {
         assertFailsWith<UnsupportedOperationException> {
-            underTest.configure(Config(geospatial = androidx.xr.runtime.GeospatialMode.INERTIAL))
+            underTest.configure(Config.Builder().setGeospatial(GeospatialMode.INERTIAL).build())
         }
     }
 
@@ -75,7 +74,7 @@ class OpenXrRuntimeTest {
         check(underTest.config.handTracking == HandTrackingMode.DISABLED)
         check(perceptionManager.xrResources.updatables.isEmpty())
 
-        underTest.configure(Config(handTracking = HandTrackingMode.BOTH))
+        underTest.configure(Config.Builder().setHandTracking(HandTrackingMode.BOTH).build())
 
         assertThat(perceptionManager.xrResources.updatables)
             .containsExactly(
@@ -87,7 +86,7 @@ class OpenXrRuntimeTest {
     @Test
     fun configure_handTrackingDisabled_removesHandsFromUpdatables() {
         shadowOf(activity).grantPermissions(HAND_TRACKING)
-        underTest.configure(Config(handTracking = HandTrackingMode.BOTH))
+        underTest.configure(Config.Builder().setHandTracking(HandTrackingMode.BOTH).build())
         check(
             perceptionManager.xrResources.updatables.containsAll(
                 listOf(
@@ -97,7 +96,7 @@ class OpenXrRuntimeTest {
             )
         )
 
-        underTest.configure(Config(handTracking = HandTrackingMode.DISABLED))
+        underTest.configure(Config.Builder().setHandTracking(HandTrackingMode.DISABLED).build())
 
         assertThat(perceptionManager.xrResources.updatables)
             .doesNotContain(perceptionManager.xrResources.leftHand)

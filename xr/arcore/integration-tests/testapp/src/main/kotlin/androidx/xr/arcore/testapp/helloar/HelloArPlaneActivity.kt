@@ -42,15 +42,16 @@ import androidx.xr.arcore.perceptionState
 import androidx.xr.arcore.testapp.common.BackToMainActivityButton
 import androidx.xr.arcore.testapp.common.SessionLifecycleHelper
 import androidx.xr.arcore.testapp.common.TrackablesList
+import androidx.xr.arcore.testapp.common.asString
 import androidx.xr.arcore.testapp.helloar.rendering.AnchorRenderer
 import androidx.xr.arcore.testapp.helloar.rendering.PlaneRenderer
 import androidx.xr.arcore.testapp.ui.theme.GoogleYellow
 import androidx.xr.compose.spatial.Subspace
-import androidx.xr.compose.subspace.ResizePolicy
 import androidx.xr.compose.subspace.SpatialPanel
 import androidx.xr.compose.subspace.layout.SubspaceModifier
+import androidx.xr.compose.subspace.layout.movable
+import androidx.xr.compose.subspace.layout.resizable
 import androidx.xr.compose.subspace.layout.size
-import androidx.xr.compose.subspace.layout.transformingMovable
 import androidx.xr.compose.unit.DpVolumeSize
 import androidx.xr.runtime.Config
 import androidx.xr.runtime.DeviceTrackingMode
@@ -75,10 +76,10 @@ class HelloArPlaneActivity : ComponentActivity() {
         sessionHelper =
             SessionLifecycleHelper(
                 this,
-                Config(
-                    planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL,
-                    deviceTracking = DeviceTrackingMode.SPATIAL,
-                ),
+                Config.Builder()
+                    .setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL)
+                    .setDeviceTracking(DeviceTrackingMode.SPATIAL)
+                    .build(),
                 onSessionAvailable = { session ->
                     this.session = session
 
@@ -92,8 +93,8 @@ class HelloArPlaneActivity : ComponentActivity() {
                             SpatialPanel(
                                 modifier =
                                     SubspaceModifier.size(DpVolumeSize(640.dp, 480.dp, 0.dp))
-                                        .transformingMovable(),
-                                resizePolicy = ResizePolicy(),
+                                        .movable()
+                                        .resizable()
                             ) {
                                 HelloPlanes(session)
                             }
@@ -160,7 +161,7 @@ class HelloArPlaneActivity : ComponentActivity() {
                     )
                     Text(
                         modifier = Modifier.padding(start = 10.dp).weight(3f),
-                        text = "${arDeviceState.trackingState}",
+                        text = "${arDeviceState.trackingState.asString()}",
                         fontSize = 20.sp,
                     )
                 }

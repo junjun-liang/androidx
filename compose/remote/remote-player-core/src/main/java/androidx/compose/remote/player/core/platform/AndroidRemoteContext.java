@@ -17,6 +17,7 @@ package androidx.compose.remote.player.core.platform;
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.widget.EdgeEffect;
@@ -49,11 +50,45 @@ import java.util.HashMap;
 @RestrictTo(LIBRARY_GROUP)
 public class AndroidRemoteContext extends RemoteContext {
 
+    private Context mAndroidContext;
+
+    public void setAndroidContext(@Nullable Context context) {
+        mAndroidContext = context;
+    }
+
+    public @Nullable Context getAndroidContext() {
+        return mAndroidContext;
+    }
+
     public @Nullable EdgeEffectBuilder mEdgeEffectBuilder;
 
     private boolean mA11yAnimationEnabled = true;
 
-    @NonNull private BitmapLoader mBitmapLoader = BitmapLoader.UNSUPPORTED;
+    @NonNull
+    private BitmapLoader mBitmapLoader = BitmapLoader.UNSUPPORTED;
+
+    private TypefaceResolver mTypefaceResolver;
+
+    /**
+     * Sets the TypefaceResolver to be used by the PaintContext.
+     *
+     * @param typefaceResolver The TypefaceResolver to be used.
+     */
+    public void setTypefaceResolver(@NonNull TypefaceResolver typefaceResolver) {
+        mTypefaceResolver = typefaceResolver;
+        if (mPaintContext != null) {
+            ((AndroidPaintContext) mPaintContext).setTypefaceResolver(typefaceResolver);
+        }
+    }
+
+    /**
+     * Gets the current TypefaceResolver.
+     *
+     * @return The current TypefaceResolver.
+     */
+    public @Nullable TypefaceResolver getTypefaceResolver() {
+        return mTypefaceResolver;
+    }
 
     /** Default constructor, uses a {@link RemoteClock#SYSTEM} as the clock. */
     public AndroidRemoteContext() {
@@ -101,6 +136,9 @@ public class AndroidRemoteContext extends RemoteContext {
     public void useCanvas(@NonNull Canvas canvas) {
         if (mPaintContext == null) {
             mPaintContext = new AndroidPaintContext(this, canvas);
+            if (mTypefaceResolver != null) {
+                ((AndroidPaintContext) mPaintContext).setTypefaceResolver(mTypefaceResolver);
+            }
         } else {
             // need to make sure to update the canvas for the current one
             mPaintContext.reset();
@@ -143,7 +181,8 @@ public class AndroidRemoteContext extends RemoteContext {
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // Data handling
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+
+    /// ////////////////////////////////////////////////////////////////////////////////////////////
 
     @Override
     public void loadPathData(int instanceId, int winding, float @NonNull [] floatPath) {
@@ -359,12 +398,12 @@ public class AndroidRemoteContext extends RemoteContext {
     /**
      * Decode a byte array into an image and cache it using the given imageId
      *
-     * @param imageId the id of the image
+     * @param imageId  the id of the image
      * @param encoding how the data is encoded 0 = png, 1 = raw, 2 = url
-     * @param type the type of the data 0 = RGBA 8888, 1 = 888, 2 = 8 gray
-     * @param width with of image to be loaded largest dimension is 32767
-     * @param height height of image to be loaded
-     * @param data a byte array containing the image information
+     * @param type     the type of the data 0 = RGBA 8888, 1 = 888, 2 = 8 gray
+     * @param width    with of image to be loaded largest dimension is 32767
+     * @param height   height of image to be loaded
+     * @param data     a byte array containing the image information
      */
     @Override
     public void loadBitmap(
@@ -391,7 +430,7 @@ public class AndroidRemoteContext extends RemoteContext {
     /**
      * Overrides the text associated with a given ID.
      *
-     * @param id The ID of the text to override.
+     * @param id   The ID of the text to override.
      * @param text The new text value.
      */
     public void overrideText(int id, @NonNull String text) {
@@ -401,7 +440,7 @@ public class AndroidRemoteContext extends RemoteContext {
     /**
      * Overrides the integer value associated with a given ID.
      *
-     * @param id The ID of the integer to override.
+     * @param id    The ID of the integer to override.
      * @param value The new integer value.
      */
     public void overrideInt(int id, int value) {
@@ -411,7 +450,7 @@ public class AndroidRemoteContext extends RemoteContext {
     /**
      * Overrides the data associated with a given ID.
      *
-     * @param id The ID of the data to override.
+     * @param id    The ID of the data to override.
      * @param value The new data value.
      */
     public void overrideData(int id, @NonNull Object value) {
@@ -474,7 +513,7 @@ public class AndroidRemoteContext extends RemoteContext {
     /**
      * Overrides the integer value associated with a given ID.
      *
-     * @param id The ID of the integer to override.
+     * @param id    The ID of the integer to override.
      * @param value The new integer value.
      */
     @Override
@@ -485,7 +524,7 @@ public class AndroidRemoteContext extends RemoteContext {
     /**
      * Overrides the text associated with a given ID, using a text value from another ID.
      *
-     * @param id The ID of the text to override.
+     * @param id      The ID of the text to override.
      * @param valueId The ID of the text value to use for the override.
      */
     @Override
@@ -593,6 +632,16 @@ public class AndroidRemoteContext extends RemoteContext {
     @Override
     public void hapticEffect(int type) {
         mDocument.haptic(type);
+    }
+
+    @Override
+    public void loadSound(int soundId, byte @NonNull [] data) {
+        mDocument.loadSound(soundId, data);
+    }
+
+    @Override
+    public void playSound(int soundId) {
+        mDocument.playSound(soundId);
     }
 
     /**

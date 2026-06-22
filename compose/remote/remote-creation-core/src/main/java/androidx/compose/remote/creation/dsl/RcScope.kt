@@ -22,7 +22,7 @@ import androidx.annotation.RestrictTo
 import androidx.compose.remote.core.RcPlatformServices
 import androidx.compose.remote.core.operations.BitmapFontData
 import androidx.compose.remote.core.operations.DrawTextOnCircle
-import androidx.compose.remote.creation.Rc
+import androidx.compose.remote.core.semantics.AccessibleComponent
 import androidx.compose.remote.creation.RcPaint
 import androidx.compose.remote.creation.modifiers.RecordingModifier
 
@@ -33,15 +33,15 @@ import androidx.compose.remote.creation.modifiers.RecordingModifier
 @RcDslMarker
 public interface RcScope {
 
-    /** Adds a [Box] layout to the document. */
+    /** Adds a Box layout to the document. */
     public fun Box(
         modifier: Modifier = Modifier,
         horizontal: RcHorizontalPositioning = RcHorizontalPositioning.Start,
         vertical: RcVerticalPositioning = RcVerticalPositioning.Top,
-        content: RcScope.() -> Unit = {},
+        content: RcBoxScope.() -> Unit = {},
     )
 
-    /** Adds a [FitBox] layout to the document. */
+    /** Adds a FitBox layout to the document. */
     public fun FitBox(
         modifier: Modifier = Modifier,
         horizontal: RcHorizontalPositioning = RcHorizontalPositioning.Start,
@@ -49,14 +49,24 @@ public interface RcScope {
         content: RcScope.() -> Unit = {},
     )
 
-    /** Adds a [StateLayout] layout to the document. */
+    /** Adds a StateLayout layout to the document. */
     public fun StateLayout(
         stateIndex: RcInteger,
         modifier: Modifier = Modifier,
         content: RcScope.() -> Unit = {},
     )
 
-    /** Adds a [Column] layout to the document. */
+    /** Adds a platform-specific Custom layout manager node to host native views. */
+    public fun Custom(
+        config: String,
+        properties: List<CustomProperty> = emptyList(),
+        modifier: Modifier = Modifier,
+        content: RcScope.() -> Unit = {},
+    )
+
+    public fun RcRoot(content: RcScope.() -> Unit = {})
+
+    /** Adds a Column layout to the document. */
     public fun Column(
         modifier: Modifier = Modifier,
         horizontal: RcHorizontalPositioning = RcHorizontalPositioning.Start,
@@ -64,7 +74,7 @@ public interface RcScope {
         content: RcColumnScope.() -> Unit = {},
     )
 
-    /** Adds a [Row] layout to the document. */
+    /** Adds a Row layout to the document. */
     public fun Row(
         modifier: Modifier = Modifier,
         horizontal: RcRowHorizontalPositioning = RcRowHorizontalPositioning.Start,
@@ -72,7 +82,7 @@ public interface RcScope {
         content: RcRowScope.() -> Unit = {},
     )
 
-    /** Adds a [Flow] layout to the document. */
+    /** Adds a Flow layout to the document. */
     public fun Flow(
         modifier: Modifier = Modifier,
         horizontal: RcHorizontalPositioning = RcHorizontalPositioning.Start,
@@ -82,7 +92,7 @@ public interface RcScope {
         content: RcFlowScope.() -> Unit = {},
     )
 
-    /** Adds a [CollapsibleColumn] layout to the document. */
+    /** Adds a CollapsibleColumn layout to the document. */
     public fun CollapsibleColumn(
         modifier: Modifier = Modifier,
         horizontal: RcHorizontalPositioning = RcHorizontalPositioning.Start,
@@ -90,7 +100,7 @@ public interface RcScope {
         content: RcCollapsibleColumnScope.() -> Unit = {},
     )
 
-    /** Adds a [CollapsibleRow] layout to the document. */
+    /** Adds a CollapsibleRow layout to the document. */
     public fun CollapsibleRow(
         modifier: Modifier = Modifier,
         horizontal: RcHorizontalPositioning = RcHorizontalPositioning.Start,
@@ -98,7 +108,7 @@ public interface RcScope {
         content: RcCollapsibleRowScope.() -> Unit = {},
     )
 
-    /** Adds a [Text] component to the document. */
+    /** Adds a Text component to the document. */
     public fun Text(
         text: String,
         modifier: Modifier = Modifier,
@@ -107,10 +117,11 @@ public interface RcScope {
         fontWeight: Float = RcFontWeight.Normal,
         textAlign: RcTextAlign = RcTextAlign.Start,
         overflow: RcTextOverflow = RcTextOverflow.Clip,
+        maxLines: Int = Int.MAX_VALUE,
         content: RcScope.() -> Unit = {},
     )
 
-    /** Adds a [Text] component using a remote string reference. */
+    /** Adds a Text component using a remote string reference. */
     public fun Text(
         text: RcText,
         modifier: Modifier = Modifier,
@@ -119,10 +130,11 @@ public interface RcScope {
         fontWeight: Float = RcFontWeight.Normal,
         textAlign: RcTextAlign = RcTextAlign.Start,
         overflow: RcTextOverflow = RcTextOverflow.Clip,
+        maxLines: Int = Int.MAX_VALUE,
         content: RcScope.() -> Unit = {},
     )
 
-    /** Adds an [Image] component to the document. */
+    /** Adds an Image component to the document. */
     public fun Image(
         image: RcImage,
         modifier: Modifier = Modifier,
@@ -131,25 +143,65 @@ public interface RcScope {
         alpha: Float = 1f,
     )
 
-    /** Adds a [Canvas] component to the document. */
+    /** Adds an Icon component to the document. */
+    public fun Icon(
+        image: RcImage,
+        modifier: Modifier = Modifier,
+        contentDescription: String? = null,
+        tint: RcColorValue? = null,
+    ) {
+        // In RemoteCompose, an Icon is represented as an Image node with optional color tinting.
+        Image(
+            image = image,
+            modifier = modifier,
+            contentDescription = contentDescription,
+            contentScale = RcContentScale.Fit,
+            alpha = 1f,
+        )
+    }
+
+    /** Adds a Canvas component to the document. */
     public fun Canvas(modifier: Modifier = Modifier, content: RcCanvasScope.() -> Unit)
 
     /** Executes a block with the current paint. */
     public fun applyPaint(block: RcPaint.() -> Unit)
 
+    /**
+     * Executes block with a typed RcPaintScope wrapping the current paint. Prefer this over
+     * applyPaint — uses typed value classes (`RcColor`, `RcPaintStyle`, `RcStrokeCap`,
+     * `RcBlendMode`, ...) instead of raw `Int` opcodes.
+     *
+     * Named differently from applyPaint because the JVM erases both method signatures to
+     * `(Lkotlin/jvm/functions/Function1;)V`; same-name overloads with different lambda receivers
+     * can't coexist on a Kotlin interface.
+     */
+    public fun paint(block: RcPaintScope.() -> Unit)
+
     /** Executes a block within a global section. */
     public fun Global(block: RcScope.() -> Unit)
 
-    /** Starts a global section */
+    /**
+     * Starts a global section. Prefer the block-form Global which guarantees a matched endGlobal
+     * call.
+     */
     public fun beginGlobal()
 
-    /** Ends a global section */
+    /**
+     * Ends a global section. Prefer the block-form Global which guarantees a matched beginGlobal
+     * call.
+     */
     public fun endGlobal()
 
-    /** Start a list of canvas operations */
+    /**
+     * Start a list of canvas operations. Prefer the block-form canvasOperations which guarantees a
+     * matched endCanvasOperations call.
+     */
     public fun startCanvasOperations()
 
-    /** End a list of canvas operations */
+    /**
+     * End a list of canvas operations. Prefer the block-form canvasOperations which guarantees a
+     * matched startCanvasOperations call.
+     */
     public fun endCanvasOperations()
 
     /** In the context of a draw modifier, draw the component content */
@@ -179,7 +231,7 @@ public interface RcScope {
 
     public operator fun RcText.plus(v: RcText): RcText = textMerge(this, v)
 
-    public operator fun String.plus(v: RcText): RcText = textMerge(remoteText(this), v)
+    public infix fun String.join(v: RcText): RcText = textMerge(remoteText(this), v)
 
     public operator fun RcText.plus(v: String): RcText = textMerge(this, remoteText(v))
 
@@ -233,69 +285,78 @@ public interface RcScope {
     /** Registers a float array and returns its reference. */
     public fun remoteFloatArray(array: FloatArray): RcFloat
 
-    /** Returns an [RcFloat] representing the current animation time. */
+    /** Registers a named float array and returns its reference. */
+    public fun addNamedFloatArray(name: String, array: FloatArray): RcFloat
+
+    /** Sets the name of a remote float in the buffer. */
+    public fun RcFloat.named(name: String): RcFloat
+
+    /** Sets the name of a remote color in the buffer. */
+    public fun RcColor.named(name: String): RcColor
+
+    /** Returns an RcFloat representing the current animation time. */
     public fun animationTime(): RcFloat
 
-    /** Returns an [RcFloat] representing the last touch event time. */
+    /** Returns an RcFloat representing the last touch event time. */
     public fun touchTime(): RcFloat
 
-    /** Returns an [RcFloat] representing the current day of the week. */
-    @Suppress("FunctionName") public fun dayOfWeek(): RcFloat
+    /** Returns an RcFloat representing the current day of the week. */
+    public fun dayOfWeek(): RcFloat
 
-    /** Returns an [RcFloat] representing the current day of the month. */
-    @Suppress("FunctionName") public fun dayOfMonth(): RcFloat
+    /** Returns an RcFloat representing the current day of the month. */
+    public fun dayOfMonth(): RcFloat
 
-    /** Returns an [RcFloat] representing the current hour. */
-    @Suppress("FunctionName") public fun hour(): RcFloat
+    /** Returns an RcFloat representing the current hour. */
+    public fun hour(): RcFloat
 
-    /** Returns an [RcFloat] representing the current minutes. */
-    @Suppress("FunctionName") public fun minutes(): RcFloat
+    /** Returns an RcFloat representing the current minutes. */
+    public fun minutes(): RcFloat
 
-    /** Returns an [RcFloat] representing the current seconds. */
-    @Suppress("FunctionName") public fun seconds(): RcFloat
+    /** Returns an RcFloat representing the current seconds. */
+    public fun seconds(): RcFloat
 
-    /** Returns an [RcFloat] representing continuous seconds. */
+    /** Returns an RcFloat representing continuous seconds. */
     public fun continuousSeconds(): RcFloat
 
-    /** Returns an [RcFloat] representing the maximum of [a] and [b]. */
+    /** Returns an RcFloat representing the maximum of a and b. */
     public fun max(a: RcFloat, b: RcFloat): RcFloat
 
-    /** Returns an [RcFloat] representing the maximum of [a] and [b]. */
+    /** Returns an RcFloat representing the maximum of a and b. */
     public fun max(a: Float, b: RcFloat): RcFloat
 
-    /** Returns an [RcFloat] representing the maximum of [a] and [b]. */
+    /** Returns an RcFloat representing the maximum of a and b. */
     public fun max(a: RcFloat, b: Float): RcFloat
 
-    /** Returns an [RcFloat] representing the minimum of [a] and [b]. */
+    /** Returns an RcFloat representing the minimum of a and b. */
     public fun min(a: RcFloat, b: RcFloat): RcFloat
 
-    /** Returns an [RcFloat] representing the minimum of [a] and [b]. */
+    /** Returns an RcFloat representing the minimum of a and b. */
     public fun min(a: Float, b: RcFloat): RcFloat
 
-    /** Returns an [RcFloat] representing the minimum of [a] and [b]. */
+    /** Returns an RcFloat representing the minimum of a and b. */
     public fun min(a: RcFloat, b: Float): RcFloat
 
-    /** Returns an [RcFloat] representing the sign of [v]. */
+    /** Returns an RcFloat representing the sign of v. */
     public fun sign(v: RcFloat): RcFloat
 
-    /** Returns an [RcFloat] representing the sine of [v]. */
+    /** Returns an RcFloat representing the sine of v. */
     public fun sin(v: RcFloat): RcFloat
 
-    /** Returns an [RcFloat] representing the cosine of [v]. */
+    /** Returns an RcFloat representing the cosine of v. */
     public fun cos(v: RcFloat): RcFloat
 
     public fun abs(v: RcFloat): RcFloat
 
-    /** Returns an [RcFloat] representing the maximum value in the [array]. */
+    /** Returns an RcFloat representing the maximum value in the array. */
     public fun arrayMax(array: RcFloat): RcFloat
 
-    /** Returns an [RcFloat] representing the minimum value in the [array]. */
+    /** Returns an RcFloat representing the minimum value in the array. */
     public fun arrayMin(array: RcFloat): RcFloat
 
-    /** Returns an [RcFloat] interpolated from [array] at [position]. */
+    /** Returns an RcFloat interpolated from array at position. */
     public fun arraySpline(array: RcFloat, position: RcFloat): RcFloat
 
-    /** Returns an [RcFloat] interpolated from [array] at [position]. */
+    /** Returns an RcFloat interpolated from array at position. */
     public fun arraySpline(array: RcFloat, position: Float): RcFloat
 
     public fun arrayLength(a: RcFloat): RcFloat
@@ -318,7 +379,7 @@ public interface RcScope {
      * @param start the start angle
      * @param end the end angle
      * @param count the number of points
-     * @param type the path type (see [Rc.PathExpression])
+     * @param type the path type (see Rc.PathExpression)
      */
     public fun remoteXYPath(
         expressionX: RcFloat,
@@ -338,7 +399,7 @@ public interface RcScope {
      * @param count the number of points
      * @param centerX the center x coordinate
      * @param centerY the center y coordinate
-     * @param type the path type (see [Rc.PathExpression])
+     * @param type the path type (see Rc.PathExpression)
      */
     public fun remotePolarPath(
         expression: RcFloat,
@@ -351,7 +412,7 @@ public interface RcScope {
     ): RcPath
 
     /**
-     * Returns an [RcFloat] representing a function of a single variable.
+     * Returns an RcFloat representing a function of a single variable.
      *
      * @param block the function block
      */
@@ -673,6 +734,15 @@ public interface RcScope {
         block: (androidx.compose.remote.creation.RemoteComposeShader.() -> Unit)? = null,
     ): RcShader
 
+    /**
+     * Registers a custom shader and configures its uniforms via a typed RcShaderScope. Prefer this
+     * over createShader — uniform setters are picked by value type (no reflection, no `Any`).
+     *
+     * Named differently from createShader for the same JVM-erasure reason as paint vs applyPaint
+     * above.
+     */
+    public fun shader(shaderString: String, block: RcShaderScope.() -> Unit): RcShader
+
     /** Adds a spacer component. */
     public fun Spacer(modifier: Modifier)
 
@@ -682,14 +752,55 @@ public interface RcScope {
     /** Combines two paths using the specified operation. */
     public fun RcPath.combine(path2: RcPath, op: RcPathCombineOp): RcPath
 
-    /** Performs a haptic feedback. */
+    /** Trigger a haptic-feedback pulse on the player device. */
     public fun performHaptic(haptic: RcHaptic)
+
+    /**
+     * Register raw inline PCM sound data (SC format) as a reusable resource. Returns an RcSound ID
+     * for use in soundExpression or playSound.
+     *
+     * @param data SC-format audio bytes (tiny header + raw samples).
+     */
+    public fun addSound(data: ByteArray): RcSound
+
+    /**
+     * Define a sound synthesis expression and register it as a resource. Returns an
+     * RcSoundExpression ID to pass to playSound.
+     *
+     * For RcSoundType.Tone: the tone is synthesized from frequency (Hz), durationSeconds, and
+     * waveform on the player device at load time.
+     *
+     * @param type synthesis type (currently only RcSoundType.Tone)
+     * @param frequency tone frequency in Hz (RcSoundType.Tone only)
+     * @param durationSeconds tone duration in seconds (RcSoundType.Tone only)
+     * @param waveform waveform shape (RcSoundType.Tone only)
+     * @param leftVolume left-channel volume, 0.0–1.0 (supports dynamic RFloat)
+     * @param rightVolume right-channel volume, 0.0–1.0 (supports dynamic RFloat)
+     * @param rate playback rate, 1.0 = normal (supports dynamic RFloat)
+     */
+    public fun soundExpression(
+        type: RcSoundType = RcSoundType.Tone,
+        frequency: Float = 440f,
+        durationSeconds: Float = 0.1f,
+        waveform: RcWaveform = RcWaveform.Sine,
+        leftVolume: Float = 1f,
+        rightVolume: Float = 1f,
+        rate: Float = 1f,
+    ): RcSoundExpression
+
+    /**
+     * Trigger playback of a previously defined RcSoundExpression. Usable anywhere performHaptic is
+     * usable (action handlers, onClick, etc.).
+     *
+     * @param expression the sound expression to play
+     */
+    public fun playSound(expression: RcSoundExpression)
 
     /** Tells the system to wake up in a given number of seconds. */
     public fun wakeIn(seconds: Float)
 
     /** Returns the color attribute. */
-    public fun getColorAttribute(baseColor: RcColor, type: RcColorAttr): RcFloat
+    public fun getColorAttribute(baseColor: RcColor, type: Short): RcFloat
 
     /** Returns a substring of the text. */
     public fun RcText.substring(start: RcFloat, len: RcFloat): RcText
@@ -820,7 +931,7 @@ public interface RcScope {
     public fun textLength(text: RcText): RcFloat
 
     /** Creates a time attribute. */
-    public fun timeAttribute(variable: RcInteger, type: RcTimeAttr, vararg args: Int): RcFloat
+    public fun timeAttribute(variable: RcInteger, type: Short, vararg args: Int): RcFloat
 
     /** Pre-concat the current matrix with the specified skew. */
     public fun skew(skewX: Float, skewY: Float)
@@ -833,29 +944,75 @@ public interface RcScope {
 
     /** Adds a conditional block based on the comparison of two values. */
     public fun conditionalOperations(
-        type: RcConditionOp,
+        type: Byte,
         a: RcFloat,
         b: RcFloat,
         content: RcScope.() -> Unit,
     )
 
+    /** Adds an elegant conditional block based on a type-safe RcCondition. */
+    public fun ifTrue(condition: RcCondition, block: RcScope.() -> Unit) {
+        conditionalOperations(condition.op.value, condition.a, condition.b, block)
+    }
+
     /** Loops from start to end with a specified step. */
     public fun rcLoop(start: RcFloat, step: Float, end: RcFloat, block: RcScope.(RcFloat) -> Unit)
 
     /**
-     * Converts this [Float] to an [RcText] using the specified formatting.
+     * Converts this Float to an RcText using the specified formatting.
      *
      * @param whole the number of digits before the decimal point
      * @param decimal the number of digits after the decimal point
-     * @param flags formatting flags (see [Rc.TextFromFloat])
+     * @param flags formatting flags (see Rc.TextFromFloat)
      */
     public fun Float.format(whole: Int, decimal: Int, flags: Int): RcText
 
-    /** Extension property to convert an [Int] to a [RcFloat] within this scope. */
+    /** Merges this RcText with other into a new RcText. */
+    public infix fun RcText.merge(other: RcText): RcText
+
+    /** Extracts a substring from this RcText starting at start for length characters. */
+    public fun RcText.subtext(start: RcFloat, length: RcFloat = (-1f).rf): RcText
+
+    public fun RcText.subtext(start: Float, length: Float = -1f): RcText
+
+    /** Returns the length of this RcText as an RcFloat. */
+    public val RcText.length: RcFloat
+
+    /** Defines a reusable remote Macro template. */
+    public fun defineMacro(
+        name: String,
+        parameters: List<String>,
+        content: RcScope.(Map<String, RcMacroArg>) -> Unit,
+    ): RcMacro
+
+    /** Inflates an existing RcMacro with the specified arguments. */
+    public fun RcMacro.inflate(arguments: Map<String, Any>)
+
+    /** Inserts a macro parameter argument placeholder at this position. */
+    public fun RcMacroArg.insertArgument()
+
+    /** Inserts a macro parameter argument block at this position. */
+    public fun RcMacroArg.insertBlock(content: RcScope.() -> Unit)
+
+    /** Extension property to convert an Int to a RcFloat within this scope. */
     public val Int.rf: RcFloat
 
-    /** Extension property to convert a [Float] to a [RcFloat] within this scope. */
+    /** Extension property to convert a Float to a RcFloat within this scope. */
     public val Float.rf: RcFloat
+
+    /** Extension property to register an Int constant as a RcInteger within this scope. */
+    public val Int.ri: RcInteger
+
+    /** Extension property to register a Boolean constant as a typed RcBool within this scope. */
+    public val Boolean.rb: RcBool
+
+    /**
+     * Registers a boolean constant and returns a typed RcBool reference.
+     *
+     * Distinct from remoteBoolean which returns the more general RcInteger. Prefer this overload
+     * when the value is logically boolean to keep boolean→int arithmetic from compiling.
+     */
+    public fun remoteBool(value: Boolean): RcBool
 
     /** Add a particle system definition */
     public fun createParticles(
@@ -899,15 +1056,15 @@ public interface RcScope {
     public fun impulse(duration: RcFloat, start: RcFloat, block: RcImpulseScope.() -> Unit)
 
     /** Conditionally skip a segment */
-    public fun skip(type: RcSkipKind, value: Int, block: RcScope.() -> Unit)
+    public fun skip(type: Short, value: Int, block: RcScope.() -> Unit)
 
     /** Conditionally skip a segment, returning an offset token. */
-    public fun beginSkip(type: RcSkipKind, value: Int): Int
+    public fun beginSkip(type: Short, value: Int): Int
 
     /** Concludes the skipped segment using the offset token. */
     public fun endSkip(offset: Int)
 
-    /** Returns an [RcFloat] representing the animation delta time. */
+    /** Returns an RcFloat representing the animation delta time. */
     public fun deltaTime(): RcFloat
 
     public fun RcDynamicPath.lineTo(x: Float, y: Float)
@@ -936,6 +1093,284 @@ public interface RcScope {
 
     /** Sets a value in the array at the given index. */
     public fun setArrayValue(array: RcFloat, index: RcFloat, value: RcFloat)
+
+    // =================================================================================
+    // Typed default-method overloads. Each delegates to the raw-opcode method above.
+    //
+    // Declared as members (not extensions) so they don't require per-caller imports —
+    // overload resolution finds them via the implicit RcScope receiver. The raw forms
+    // remain abstract for backward compatibility; new code should prefer the typed.
+    // =================================================================================
+
+    /** Conditionally execute content if `op(a, b)` holds on the player. */
+    public fun conditionalOperations(
+        op: RcConditionOp,
+        a: RcFloat,
+        b: RcFloat,
+        content: RcScope.() -> Unit,
+    ): Unit = conditionalOperations(op.value, a, b, content)
+
+    /** Read a single attribute (HSV/RGBA component) of a color resource. */
+    public fun getColorAttribute(baseColor: RcColor, attr: RcColorAttr): RcFloat =
+        getColorAttribute(baseColor, attr.value)
+
+    /** Compute a derived float from a time-valued integer variable. */
+    public fun timeAttribute(variable: RcInteger, attr: RcTimeAttr, vararg args: Int): RcFloat =
+        timeAttribute(variable, attr.value, *args)
+
+    /** Skip when the player matches kind against value. */
+    public fun skip(kind: RcSkipKind, value: Int, block: RcScope.() -> Unit): Unit =
+        skip(kind.value, value, block)
+
+    /** drawTextAnchored with typed RcTextAnchorFlags. */
+    public fun drawTextAnchored(
+        text: RcText,
+        x: Float,
+        y: Float,
+        panX: Float,
+        panY: Float,
+        flags: RcTextAnchorFlags,
+    ): Unit = drawTextAnchored(text, x, y, panX, panY, flags.bits)
+
+    /** drawTextAnchored with typed RcTextAnchorFlags using remote floats. */
+    public fun drawTextAnchored(
+        text: RcText,
+        x: RcFloat,
+        y: RcFloat,
+        panX: RcFloat,
+        panY: RcFloat,
+        flags: RcTextAnchorFlags,
+    ): Unit = drawTextAnchored(text, x, y, panX, panY, flags.bits)
+
+    /** matrixFromPath with typed RcMatrixFromPathFlags. */
+    public fun matrixFromPath(
+        path: RcPath,
+        fraction: Float,
+        vOffset: Float,
+        flags: RcMatrixFromPathFlags,
+    ): Unit = matrixFromPath(path, fraction, vOffset, flags.bits)
+
+    /** matrixFromPath with typed RcMatrixFromPathFlags using remote floats. */
+    public fun matrixFromPath(
+        path: RcPath,
+        fraction: RcFloat,
+        vOffset: RcFloat,
+        flags: RcMatrixFromPathFlags,
+    ): Unit = matrixFromPath(path, fraction, vOffset, flags.bits)
+
+    /** createTextFromFloat with a typed RcTextFromFloatSpec format. */
+    public fun createTextFromFloat(
+        value: Float,
+        whole: Int,
+        decimal: Int,
+        spec: RcTextFromFloatSpec,
+    ): RcText = createTextFromFloat(value, whole, decimal, spec.bits)
+
+    /** createTextFromFloat with a typed RcTextFromFloatSpec format using a remote float. */
+    public fun createTextFromFloat(
+        value: RcFloat,
+        whole: Int,
+        decimal: Int,
+        spec: RcTextFromFloatSpec,
+    ): RcText = createTextFromFloat(value, whole, decimal, spec.bits)
+
+    /** Text overload taking a typed RcColor reference. */
+    public fun Text(
+        text: String,
+        color: RcColor,
+        modifier: Modifier = Modifier,
+        fontSize: RcSp = 16.rsp,
+        fontWeight: Float = RcFontWeight.Normal,
+        textAlign: RcTextAlign = RcTextAlign.Start,
+        overflow: RcTextOverflow = RcTextOverflow.Clip,
+        content: RcScope.() -> Unit = {},
+    ): Unit =
+        Text(
+            text,
+            modifier,
+            color as Any,
+            fontSize,
+            fontWeight,
+            textAlign,
+            overflow,
+            content = content,
+        )
+
+    /** Text overload taking a typed RcColorValue reference. */
+    public fun Text(
+        text: String,
+        color: RcColorValue,
+        modifier: Modifier = Modifier,
+        fontSize: RcSp = 16.rsp,
+        fontWeight: Float = RcFontWeight.Normal,
+        textAlign: RcTextAlign = RcTextAlign.Start,
+        overflow: RcTextOverflow = RcTextOverflow.Clip,
+        content: RcScope.() -> Unit = {},
+    ): Unit =
+        Text(
+            text,
+            modifier,
+            color as Any,
+            fontSize,
+            fontWeight,
+            textAlign,
+            overflow,
+            content = content,
+        )
+
+    /** Text overload taking a RcText reference and a typed RcColor. */
+    public fun Text(
+        text: RcText,
+        color: RcColor,
+        modifier: Modifier = Modifier,
+        fontSize: RcSp = 16.rsp,
+        fontWeight: Float = RcFontWeight.Normal,
+        textAlign: RcTextAlign = RcTextAlign.Start,
+        overflow: RcTextOverflow = RcTextOverflow.Clip,
+        content: RcScope.() -> Unit = {},
+    ): Unit =
+        Text(
+            text,
+            modifier,
+            color as Any,
+            fontSize,
+            fontWeight,
+            textAlign,
+            overflow,
+            content = content,
+        )
+
+    /** Text overload taking a RcText reference and a typed RcColorValue. */
+    public fun Text(
+        text: RcText,
+        color: RcColorValue,
+        modifier: Modifier = Modifier,
+        fontSize: RcSp = 16.rsp,
+        fontWeight: Float = RcFontWeight.Normal,
+        textAlign: RcTextAlign = RcTextAlign.Start,
+        overflow: RcTextOverflow = RcTextOverflow.Clip,
+        content: RcScope.() -> Unit = {},
+    ): Unit =
+        Text(
+            text,
+            modifier,
+            color as Any,
+            fontSize,
+            fontWeight,
+            textAlign,
+            overflow,
+            content = content,
+        )
+
+    /** Text overload taking a typed RcWeight. */
+    public fun Text(
+        text: String,
+        weight: RcWeight,
+        modifier: Modifier = Modifier,
+        color: Any = 0xFF000000.toInt(),
+        fontSize: RcSp = 16.rsp,
+        textAlign: RcTextAlign = RcTextAlign.Start,
+        overflow: RcTextOverflow = RcTextOverflow.Clip,
+        content: RcScope.() -> Unit = {},
+    ): Unit =
+        Text(text, modifier, color, fontSize, weight.value, textAlign, overflow, content = content)
+
+    /** Text overload taking a RcText reference and typed RcWeight. */
+    public fun Text(
+        text: RcText,
+        weight: RcWeight,
+        modifier: Modifier = Modifier,
+        color: Any = 0xFF000000.toInt(),
+        fontSize: RcSp = 16.rsp,
+        textAlign: RcTextAlign = RcTextAlign.Start,
+        overflow: RcTextOverflow = RcTextOverflow.Clip,
+        content: RcScope.() -> Unit = {},
+    ): Unit =
+        Text(text, modifier, color, fontSize, weight.value, textAlign, overflow, content = content)
+
+    /** remoteTextStyle overload taking a typed RcWeight. */
+    public fun remoteTextStyle(
+        fontSize: RcSp?,
+        weight: RcWeight,
+        color: Int? = null,
+        textAlign: RcTextAlign? = null,
+    ): RcTextStyle = remoteTextStyle(fontSize, color, weight.value, textAlign)
+
+    /** drawRect taking a typed RcRect. */
+    public fun drawRect(rect: RcRect): Unit = drawRect(rect.left, rect.top, rect.right, rect.bottom)
+
+    /** drawOval taking a typed RcRect. */
+    public fun drawOval(rect: RcRect): Unit = drawOval(rect.left, rect.top, rect.right, rect.bottom)
+
+    /** drawRoundRect taking a typed RcRect. */
+    public fun drawRoundRect(rect: RcRect, radiusX: Float, radiusY: Float): Unit =
+        drawRoundRect(
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            RcFloat(radiusX),
+            RcFloat(radiusY),
+        )
+
+    /** drawArc taking a typed RcRect. */
+    public fun drawArc(rect: RcRect, startAngle: Float, sweepAngle: Float): Unit =
+        drawArc(
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            RcFloat(startAngle),
+            RcFloat(sweepAngle),
+        )
+
+    /** drawSector taking a typed RcRect. */
+    public fun drawSector(rect: RcRect, startAngle: Float, sweepAngle: Float): Unit =
+        drawSector(
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            RcFloat(startAngle),
+            RcFloat(sweepAngle),
+        )
+
+    /** drawCircle taking a typed RcPoint center. */
+    public fun drawCircle(center: RcPoint, radius: Float): Unit =
+        drawCircle(center.x, center.y, RcFloat(radius))
+
+    /** drawLine taking typed RcPoint endpoints. */
+    public fun drawLine(from: RcPoint, to: RcPoint): Unit = drawLine(from.x, from.y, to.x, to.y)
+
+    /** drawBitmap taking a typed destination RcRect. */
+    public fun drawBitmap(image: RcImage, dst: RcRect): Unit =
+        drawBitmap(image, dst.left, dst.top, dst.right, dst.bottom)
+
+    /** drawBitmap taking a typed top-left RcPoint. */
+    public fun drawBitmap(image: RcImage, topLeft: RcPoint): Unit =
+        drawBitmap(image, topLeft.x, topLeft.y)
+
+    // =================================================================================
+    // Begin/end-pair safety (item 7).
+    // =================================================================================
+
+    /** Block-scoped wrapper for startCanvasOperations / endCanvasOperations. */
+    public fun canvasOperations(block: RcScope.() -> Unit) {
+        startCanvasOperations()
+        block()
+        endCanvasOperations()
+    }
+
+    /**
+     * Begin a typed skip block; pair with endSkip using the returned token. Prefer the skip block
+     * form when the scoping is statically known; this form exists for the rare case where begin/end
+     * must be split.
+     */
+    public fun beginSkip(kind: RcSkipKind, value: Int): RcSkipToken =
+        RcSkipToken(beginSkip(kind.value, value))
+
+    /** Conclude a skip block opened by beginSkip using the typed token. */
+    public fun endSkip(token: RcSkipToken): Unit = endSkip(token.offset)
 }
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
@@ -947,36 +1382,43 @@ public interface RcImpulseScope : RcScope {
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 @RcDslMarker
+public interface RcBoxScope : RcScope {
+    /** Matches child size to the parent Box. */
+    public fun Modifier.matchParentSize(): Modifier = fillMaxSize()
+}
+
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+@RcDslMarker
 public interface RcColumnScope : RcScope {
-    /** Sets the vertical weight of the component within a [Column]. */
+    /** Sets the vertical weight of the component within a Column. */
     public fun Modifier.weight(weight: Float): Modifier
 }
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 @RcDslMarker
 public interface RcRowScope : RcScope {
-    /** Sets the horizontal weight of the component within a [Row]. */
+    /** Sets the horizontal weight of the component within a Row. */
     public fun Modifier.weight(weight: Float): Modifier
 }
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 @RcDslMarker
 public interface RcFlowScope : RcScope {
-    /** Sets the horizontal weight of the component within a [Row]. */
+    /** Sets the horizontal weight of the component within a Row. */
     public fun Modifier.weight(weight: Float): Modifier
 }
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 @RcDslMarker
 public interface RcCollapsibleColumnScope : RcScope {
-    /** Sets the vertical weight of the component within a [CollapsibleColumn]. */
+    /** Sets the vertical weight of the component within a CollapsibleColumn. */
     public fun Modifier.weight(weight: Float): Modifier
 }
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 @RcDslMarker
 public interface RcCollapsibleRowScope : RcScope {
-    /** Sets the horizontal weight of the component within a [CollapsibleRow]. */
+    /** Sets the horizontal weight of the component within a CollapsibleRow. */
     public fun Modifier.weight(weight: Float): Modifier
 }
 
@@ -987,7 +1429,7 @@ public interface RcCanvasScope : RcScope {
     public val width: RcFloat
     /** Returns the height of the canvas as a remote float. */
     public val height: RcFloat
-    /** The current [RcPaint] object. */
+    /** The current RcPaint object. */
     public val paint: RcPaint
 
     /** Executes a block within a save/restore pair. */
@@ -1020,7 +1462,7 @@ public interface RcCanvasScope : RcScope {
     /** Loops from start to end with a specified step. */
     public fun loop(
         start: RcFloat,
-        step: Float,
+        step: RcFloat,
         end: RcFloat,
         block: RcCanvasScope.(RcFloat) -> Unit,
     )
@@ -1040,23 +1482,163 @@ public interface RcCanvasScope : RcScope {
         easingSpec: FloatArray?,
         vararg exp: Float,
     ): RcFloat
+
+    /**
+     * Typed touch handler.
+     *
+     * Replaces the raw `touchMode: Int` with a typed RcTouchStopMode enum and the raw
+     * `touchEffects: Int` with a typed RcHaptic (the haptic to fire when a notch is crossed). The
+     * `touchEffects` parameter at the wire level supports an additional "indirect via integer
+     * variable" mode (bit 15); use the raw addTouch above for that case until it's typed properly.
+     *
+     * @param defaultValue initial value of the touch variable
+     * @param range allowed range of the touch variable
+     * @param stopMode behavior when the user releases the touch
+     * @param velocity remote-float channel exposed by the touch (see Rc.Touch.VELOCITY_*)
+     * @param notchHaptic haptic kind to fire when the touch crosses a notch
+     * @param notches notch positions (interpretation depends on stopMode); null for the non-notch
+     *   modes
+     * @param easing easing-spec FloatArray (see PaintPathEffects); null for default
+     * @param expressions trailing variadic expression coefficients (raw)
+     */
+    public fun addTouch(
+        defaultValue: Float,
+        range: ClosedFloatingPointRange<Float>,
+        stopMode: RcTouchStopMode,
+        velocity: Float = 0f,
+        notchHaptic: RcHaptic = RcHaptic.NoHaptics,
+        notches: FloatArray? = null,
+        easing: FloatArray? = null,
+        vararg expressions: Float,
+    ): RcFloat =
+        addTouch(
+            defaultValue,
+            range.start,
+            range.endInclusive,
+            stopMode.value,
+            velocity,
+            notchHaptic.value,
+            notches,
+            easing,
+            *expressions,
+        )
+
+    /**
+     * addTouch with **reactive** min]/[max bounds and an RcFloat touch input expression. The
+     * expression (typically built from touchPosX]/[touchPosY, e.g. `touchPosX() * componentWidth()
+     * / windowWidth()`) is evaluated each event to produce the value, which is then clamped to
+     * `[min, max]`. Both bounds may be live expressions (e.g. plot edges).
+     */
+    public fun addTouch(
+        defaultValue: Float,
+        min: RcFloat,
+        max: RcFloat,
+        stopMode: RcTouchStopMode,
+        expression: RcFloat,
+        velocity: Float = 0f,
+        notchHaptic: RcHaptic = RcHaptic.NoHaptics,
+        notches: FloatArray? = null,
+        easing: FloatArray? = null,
+    ): RcFloat =
+        addTouch(
+            defaultValue,
+            min.toFloat(),
+            max.toFloat(),
+            stopMode.value,
+            velocity,
+            notchHaptic.value,
+            notches,
+            easing,
+            *expression.toArray(),
+        )
 }
 
-/** Internal helper to convert the new [Modifier] chain to the legacy [RecordingModifier]. */
-internal fun Modifier.toRecordingModifier(): RecordingModifier {
+/** Internal helper to convert the new Modifier chain to the legacy RecordingModifier. */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+public fun Modifier.toRecordingModifier(): RecordingModifier {
     val recording = RecordingModifier()
     foldIn(Unit) { _, element -> element.applyTo(recording) }
     return recording
 }
 
 /** Adds a spacer component defaulting to weight 1.0. */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public fun RcColumnScope.Spacer(): Unit = Spacer(Modifier.weight(1f))
 
 /** Adds a spacer component defaulting to weight 1.0. */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public fun RcRowScope.Spacer(): Unit = Spacer(Modifier.weight(1f))
 
 /** Adds a spacer component defaulting to weight 1.0. */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public fun RcCollapsibleColumnScope.Spacer(): Unit = Spacer(Modifier.weight(1f))
 
 /** Adds a spacer component defaulting to weight 1.0. */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public fun RcCollapsibleRowScope.Spacer(): Unit = Spacer(Modifier.weight(1f))
+
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+public fun RcScope.format(
+    value: Float,
+    whole: Int,
+    decimal: Int,
+    spec: RcTextFromFloatSpec,
+): RcText = value.format(whole, decimal, spec.bits)
+
+/** Scope to configure accessibility semantics on layouts. */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+@RcDslMarker
+public interface RcSemanticsScope {
+    /** Sets the content description text. */
+    public fun contentDescription(text: String)
+
+    /** Sets the content description using a remote string reference. */
+    public fun contentDescription(text: RcText)
+
+    /** Sets the accessibility role (BUTTON, CHECKBOX, IMAGE, etc.). */
+    public fun role(role: AccessibleComponent.Role)
+
+    /** Sets the component text content. */
+    public fun text(text: String)
+
+    /** Sets the component text content using a remote string reference. */
+    public fun text(text: RcText)
+
+    /** Sets the state description, e.g., "checked" or "disabled". */
+    public fun stateDescription(text: String)
+
+    /** Sets the state description using a remote string reference. */
+    public fun stateDescription(text: RcText)
+
+    /** Sets the merge mode (SET, CLEAR_AND_SET, MERGE). */
+    public fun mode(mode: AccessibleComponent.Mode)
+
+    /** Sets whether the component is enabled. */
+    public fun enabled(value: Boolean)
+
+    /** Sets whether the component is clickable. */
+    public fun clickable(value: Boolean)
+}
+
+/** Scope for custom layout and measurement computations on the player. */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+@RcDslMarker
+public interface RcLayoutScope {
+    /** Read/write X position of the component. */
+    public var x: RcFloat
+
+    /** Read/write Y position of the component. */
+    public var y: RcFloat
+
+    /** Read/write width dimension of the component. */
+    public var width: RcFloat
+
+    /** Read/write height dimension of the component. */
+    public var height: RcFloat
+
+    /** Read-only width of the parent layout container. */
+    public val parentWidth: RcFloat
+
+    /** Read-only height of the parent layout container. */
+    public val parentHeight: RcFloat
+}

@@ -16,6 +16,9 @@
 
 package androidx.appfunctions.metadata
 
+import android.os.Build
+import androidx.annotation.RequiresApi
+
 /** Globally unique identifier for an app function. */
 public class AppFunctionName
 constructor(
@@ -44,5 +47,27 @@ constructor(
 
     override fun toString(): String {
         return "AppFunctionName(packageName='$packageName', functionIdentifier='$functionIdentifier')"
+    }
+
+    internal companion object {
+        internal fun fromQualifiedId(qualifiedFunctionId: String): AppFunctionName {
+            val parts = qualifiedFunctionId.split('/', limit = 2)
+
+            require(parts.size == 2 && parts[1].isNotEmpty()) {
+                "Incorrect app function id format."
+            }
+
+            return AppFunctionName(parts[0], parts[1])
+        }
+
+        @RequiresApi(Build.VERSION_CODES.CINNAMON_BUN)
+        internal fun fromPlatformAppFunctionName(
+            platformAppFunctionName: android.app.appfunctions.AppFunctionName
+        ): AppFunctionName {
+            return AppFunctionName(
+                packageName = platformAppFunctionName.packageName,
+                functionIdentifier = platformAppFunctionName.functionIdentifier,
+            )
+        }
     }
 }

@@ -142,7 +142,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         assertThat(successResponse.returnValue.getLong(PROPERTY_RETURN_VALUE)).isEqualTo(3)
     }
 
@@ -170,12 +171,13 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         assertThat(successResponse.returnValue.getLong(PROPERTY_RETURN_VALUE)).isEqualTo(3)
     }
 
     @Test
-    fun searchAllAppFunctions_returnsAllAppFunction_withDynamicIndexer() = doBlocking {
+    fun observeAllAppFunctions_returnsAllAppFunction_withDynamicIndexer() = doBlocking {
         assumeTrue(isDynamicIndexerAvailable(targetContext))
         val searchFunctionSpec = AppFunctionSearchSpec(packageNames = setOf(TARGET_APP_PACKAGE))
 
@@ -184,7 +186,7 @@ class IntegrationTest {
                 it.appFunctions
             }
 
-        val aggregatedFunctionCount = 20
+        val aggregatedFunctionCount = 22
         val multiServiceFunctionCount = 6
         if (Build.VERSION.SDK_INT >= 37) {
             assertThat(appFunctions).hasSize(aggregatedFunctionCount + multiServiceFunctionCount)
@@ -194,7 +196,7 @@ class IntegrationTest {
     }
 
     @Test
-    fun searchAllAppFunctions_returnEnumValues_withDynamicIndexer() = doBlocking {
+    fun observeAllAppFunctions_returnEnumValues_withDynamicIndexer() = doBlocking {
         assumeTrue(isDynamicIndexerAvailable(targetContext))
         val searchFunctionSpec = AppFunctionSearchSpec(packageNames = setOf(TARGET_APP_PACKAGE))
 
@@ -228,7 +230,7 @@ class IntegrationTest {
     }
 
     @Test
-    fun searchAllAppFunctions_returnEnumValuesFromLibraryModule_withDynamicIndexer() = doBlocking {
+    fun observeAllAppFunctions_returnEnumValuesFromLibraryModule_withDynamicIndexer() = doBlocking {
         assumeTrue(isDynamicIndexerAvailable(targetContext))
         val searchFunctionSpec = AppFunctionSearchSpec(packageNames = setOf(TARGET_APP_PACKAGE))
 
@@ -258,13 +260,17 @@ class IntegrationTest {
     }
 
     @Test
-    fun searchAllAppFunctions_populatesFunctionDescriptions_withDynamicIndexer() = doBlocking {
+    fun observeAllAppFunctions_populatesFunctionDescriptions_withDynamicIndexer() = doBlocking {
         val expectedAppFunctionDescriptions =
             mapOf(
                 "androidx.appfunctions.integration.testapp.TestFunctions#add" to
                     "Returns the sum of the given two numbers.",
                 "androidx.appfunctions.integration.testapp.library.TestFunctions2#concat" to
                     "Concatenates the two given strings.",
+                "androidx.appfunctions.integration.testapp.library.TestFunctions2#functionWithInstruction" to
+                    "instruction for function",
+                "androidx.appfunctions.integration.testapp.library.TestFunctions2#functionWithInstructionWithoutKdoc" to
+                    "instruction for function without kdoc",
             )
         val expectedParamDescriptions =
             mapOf(
@@ -272,6 +278,10 @@ class IntegrationTest {
                     listOf("The first number.", "The second number."),
                 "androidx.appfunctions.integration.testapp.library.TestFunctions2#concat" to
                     listOf("The first string.", "The second string."),
+                "androidx.appfunctions.integration.testapp.library.TestFunctions2#functionWithInstruction" to
+                    listOf("instruction for param1", "This arg2 shouldn't be overridden"),
+                "androidx.appfunctions.integration.testapp.library.TestFunctions2#functionWithInstructionWithoutKdoc" to
+                    listOf("instruction for param1 without kdoc", ""),
             )
         val expectedResponseDescriptions =
             mapOf(
@@ -279,6 +289,10 @@ class IntegrationTest {
                     "The sum of the two numbers.",
                 "androidx.appfunctions.integration.testapp.library.TestFunctions2#concat" to
                     "The result of concatenating the two strings.",
+                "androidx.appfunctions.integration.testapp.library.TestFunctions2#functionWithInstruction" to
+                    "instruction for return",
+                "androidx.appfunctions.integration.testapp.library.TestFunctions2#functionWithInstructionWithoutKdoc" to
+                    "instruction for return without kdoc",
             )
         assumeTrue(isDynamicIndexerAvailable(targetContext))
         val searchFunctionSpec = AppFunctionSearchSpec(packageNames = setOf(TARGET_APP_PACKAGE))
@@ -304,7 +318,7 @@ class IntegrationTest {
     }
 
     @Test
-    fun searchAllAppFunctions_populatesSerializableDescriptions_withDynamicIndexer() = doBlocking {
+    fun observeAllAppFunctions_populatesSerializableDescriptions_withDynamicIndexer() = doBlocking {
         val expectedSerializableDescriptions =
             mapOf(
                 "androidx.appfunction.integration.test.sharedschema.Note" to
@@ -312,7 +326,7 @@ class IntegrationTest {
                 "androidx.appfunction.integration.test.sharedschema.SetField<kotlin.String>" to
                     "Example parameterized AppFunctionSerializable.",
                 "androidx.appfunctions.integration.testapp.library.ExampleSerializable" to
-                    "AppFunctionSerializable in non-root library.",
+                    "Instruction for ExampleSerializable.",
                 "androidx.appfunctions.integration.testapp.library.GenericSerializable<kotlin.Int>" to
                     "Example parameterized AppFunctionSerializable in another package.",
             )
@@ -329,7 +343,7 @@ class IntegrationTest {
                 "androidx.appfunction.integration.test.sharedschema.SetField<kotlin.String>" to
                     mapOf("value" to "Value property of SetField."),
                 "androidx.appfunctions.integration.testapp.library.ExampleSerializable" to
-                    mapOf("intProperty" to "Int property of ExampleSerializable."),
+                    mapOf("intProperty" to "Instruction for intProperty."),
                 "androidx.appfunctions.integration.testapp.library.GenericSerializable<kotlin.Int>" to
                     mapOf("value" to "Value property of GenericSerializable."),
             )
@@ -360,7 +374,7 @@ class IntegrationTest {
     }
 
     @Test
-    fun searchAllAppFunctions_returnsAllSchemaAppFunction_withLegacyIndexer() = doBlocking {
+    fun observeAllAppFunctions_returnsAllSchemaAppFunction_withLegacyIndexer() = doBlocking {
         assumeFalse(isDynamicIndexerAvailable(targetContext))
         val searchFunctionSpec = AppFunctionSearchSpec(packageNames = setOf(TARGET_APP_PACKAGE))
 
@@ -414,7 +428,8 @@ class IntegrationTest {
 
         // If the enclosing class was created by the provided factory, the secondary constructor
         // should be called and so the return value would be `true`.
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         assertThat(successResponse.returnValue.getBoolean(PROPERTY_RETURN_VALUE)).isEqualTo(true)
     }
 
@@ -439,7 +454,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         assertThat(successResponse.returnValue.getString(PROPERTY_RETURN_VALUE)).isEqualTo("logcat")
     }
 
@@ -520,7 +536,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val expectedNote =
             Note(
                 title = "Test Title",
@@ -569,7 +586,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val expectedNote =
             Note(
                 title = "Test Title",
@@ -618,7 +636,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val expectedNote =
             Note(
                 title = "Test Title",
@@ -673,7 +692,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val result =
             successResponse.returnValue
                 .getAppFunctionData(PROPERTY_RETURN_VALUE)
@@ -723,7 +743,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val expectedNote =
             Note(
                 title = "NewTitle1_NewTitle2",
@@ -771,7 +792,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val expectedNote =
             Note(
                 title = "NewTitle1_DefaultTitle",
@@ -813,7 +835,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val expectedNote =
             Note(
                 title = "DefaultTitle_DefaultTitle",
@@ -875,7 +898,8 @@ class IntegrationTest {
 
         val response = appFunctionCaller.executeAppFunction(request)
 
-        assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val resultNote =
             response.returnValue
                 .getAppFunctionData(PROPERTY_RETURN_VALUE)
@@ -928,7 +952,8 @@ class IntegrationTest {
 
         val response = appFunctionCaller.executeAppFunction(request)
 
-        assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val resultNote =
             response.returnValue
                 .getAppFunctionData(PROPERTY_RETURN_VALUE)
@@ -983,7 +1008,8 @@ class IntegrationTest {
 
         val response = appFunctionCaller.executeAppFunction(request)
 
-        assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val resultNote =
             response.returnValue
                 .getAppFunctionData(PROPERTY_RETURN_VALUE)
@@ -1119,7 +1145,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         assertThat(
                 checkNotNull(successResponse.returnValue.getAppFunctionData(PROPERTY_RETURN_VALUE))
                     .deserialize(ClassWithOptionalValues::class.java)
@@ -1150,7 +1177,8 @@ class IntegrationTest {
                         )
                 )
 
-            val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+            assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+            val successResponse = response as ExecuteAppFunctionResponse.Success
             assertThat(
                     checkNotNull(
                             successResponse.returnValue.getAppFunctionData(PROPERTY_RETURN_VALUE)
@@ -1285,7 +1313,8 @@ class IntegrationTest {
                     )
             )
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         assertThat(
                 checkNotNull(successResponse.returnValue.getAppFunctionData(PROPERTY_RETURN_VALUE))
                     .deserialize(ClassWithOptionalValues::class.java)
@@ -1345,7 +1374,8 @@ class IntegrationTest {
                         )
                 )
 
-            val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+            assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+            val successResponse = response as ExecuteAppFunctionResponse.Success
             assertThat(
                     checkNotNull(
                             successResponse.returnValue.getAppFunctionData(PROPERTY_RETURN_VALUE)
@@ -1402,7 +1432,8 @@ class IntegrationTest {
 
         val response = appFunctionCaller.executeAppFunction(request)
 
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val filesData =
             successResponse.returnValue
                 .getAppFunctionData(PROPERTY_RETURN_VALUE)
@@ -1428,7 +1459,8 @@ class IntegrationTest {
             )
 
         val response = appFunctionCaller.executeAppFunction(request)
-        val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         val filesData =
             checkNotNull(
                 successResponse.returnValue
@@ -1480,8 +1512,9 @@ class IntegrationTest {
         responseADeferred.cancel()
 
         // Assert responseB is completed successfully
-        val successResponse =
-            assertIs<ExecuteAppFunctionResponse.Success>(responseBDeferred.await())
+        val responseB = responseBDeferred.await()
+        assertThat(responseB).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = responseB as ExecuteAppFunctionResponse.Success
         assertThat(successResponse.returnValue.getString(PROPERTY_RETURN_VALUE))
             .isEqualTo("Completed")
     }
@@ -1525,7 +1558,8 @@ class IntegrationTest {
 
         val response = appFunctionCaller.executeAppFunction(request)
 
-        assertIs<ExecuteAppFunctionResponse.Success>(response)
+        assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+        val successResponse = response as ExecuteAppFunctionResponse.Success
         assertThat(
                 response.returnValue.getAppFunctionDataList(PROPERTY_RETURN_VALUE)?.map {
                     it.deserialize(OneOfSealedNestedSerializable::class.java)
@@ -1595,7 +1629,8 @@ class IntegrationTest {
 
             val response = appFunctionCaller.executeAppFunction(request)
 
-            val successResponse = assertIs<ExecuteAppFunctionResponse.Success>(response)
+            assertThat(response).isInstanceOf(ExecuteAppFunctionResponse.Success::class.java)
+            val successResponse = response as ExecuteAppFunctionResponse.Success
             assertThat(
                     successResponse.returnValue
                         .getAppFunctionData(PROPERTY_RETURN_VALUE)

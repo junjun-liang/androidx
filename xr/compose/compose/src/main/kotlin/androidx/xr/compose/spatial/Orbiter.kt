@@ -31,7 +31,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
-import androidx.compose.runtime.currentCompositeKeyHash
+import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
@@ -72,8 +72,8 @@ import androidx.xr.compose.subspace.node.SubspaceNodeApplier
 import androidx.xr.compose.subspace.spatialComposeView
 import androidx.xr.compose.unit.DpVolumeOffset
 import androidx.xr.compose.unit.IntVolumeSize
-import androidx.xr.compose.unit.Meter
-import androidx.xr.compose.unit.toMeter
+import androidx.xr.compose.unit.pxToMeters
+import androidx.xr.compose.unit.toMeters
 import androidx.xr.runtime.Session
 import androidx.xr.runtime.math.FloatSize2d
 import androidx.xr.runtime.math.IntSize2d
@@ -81,6 +81,8 @@ import androidx.xr.runtime.math.Pose
 import androidx.xr.runtime.math.Quaternion
 import androidx.xr.runtime.math.Vector3
 import androidx.xr.scenecore.PanelEntity
+import androidx.xr.scenecore.PixelDensity
+import androidx.xr.scenecore.scene
 
 /** Set the scrim alpha to 32% opacity across orbiters. */
 private const val DEFAULT_SCRIM_ALPHA = 0x52000000
@@ -152,6 +154,8 @@ public fun Orbiter(
     }
 
     val density = LocalDensity.current
+    val session = checkNotNull(LocalSession.current) { "session must be initialized" }
+    val pixelDensity = session.scene.virtualPixelDensity
 
     Orbiter(
         poseProvider = { targetSize, layoutDirection, orbiterContentSize ->
@@ -179,20 +183,22 @@ public fun Orbiter(
                 }
             val anchorVector =
                 anchorPoint.calculateAnchorVector(
-                    anchorHalfSize = targetSize.toMeterSize(density) / 2f,
+                    anchorHalfSize = targetSize.toMeterSize(pixelDensity) / 2f,
                     layoutDirection = layoutDirection,
-                    orbiterHalfSize = orbiterContentSize.toMeterSize(density) / 2f,
+                    orbiterHalfSize = orbiterContentSize.toMeterSize(pixelDensity) / 2f,
                 )
             val verticalMultiplier = if (position == ContentEdge.Horizontal.Top) 1f else -1f
             val yOffset =
                 when (offsetType) {
-                    OrbiterOffsetType.Overlap -> -offset.toMeter().toM()
-                    OrbiterOffsetType.InnerEdge -> offset.toMeter().toM()
+                    OrbiterOffsetType.Overlap -> -offset.toMeters(density, pixelDensity)
+                    OrbiterOffsetType.InnerEdge -> offset.toMeters(density, pixelDensity)
                     OrbiterOffsetType.OuterEdge ->
-                        offset.toMeter().toM() - orbiterContentSize.toMeterSize(density).height
+                        offset.toMeters(density, pixelDensity) -
+                            orbiterContentSize.toMeterSize(pixelDensity).height
                     else -> throw IllegalArgumentException("Invalid offsetType: $offsetType")
                 } * verticalMultiplier
-            val offsetVector = Vector3(x = 0f, y = yOffset, z = elevation.toMeter().toM())
+            val offsetVector =
+                Vector3(x = 0f, y = yOffset, z = elevation.toMeters(density, pixelDensity))
 
             Pose(translation = anchorVector + offsetVector, rotation = Quaternion.Identity)
         },
@@ -256,6 +262,8 @@ public fun Orbiter(
     }
 
     val density = LocalDensity.current
+    val session = checkNotNull(LocalSession.current) { "session must be initialized" }
+    val pixelDensity = session.scene.virtualPixelDensity
 
     Orbiter(
         poseProvider = { targetSize, layoutDirection, orbiterContentSize ->
@@ -279,24 +287,25 @@ public fun Orbiter(
                 }
             val anchorVector =
                 anchorPoint.calculateAnchorVector(
-                    anchorHalfSize = targetSize.toMeterSize(density) / 2f,
+                    anchorHalfSize = targetSize.toMeterSize(pixelDensity) / 2f,
                     layoutDirection = layoutDirection,
-                    orbiterHalfSize = orbiterContentSize.toMeterSize(density) / 2f,
+                    orbiterHalfSize = orbiterContentSize.toMeterSize(pixelDensity) / 2f,
                 )
             val sideMultiplier = if (position == ContentEdge.Vertical.End) 1f else -1f
             val xOffset =
                 when (offsetType) {
-                    OrbiterOffsetType.Overlap -> -offset.toMeter().toM()
-                    OrbiterOffsetType.InnerEdge -> offset.toMeter().toM()
+                    OrbiterOffsetType.Overlap -> -offset.toMeters(density, pixelDensity)
+                    OrbiterOffsetType.InnerEdge -> offset.toMeters(density, pixelDensity)
                     OrbiterOffsetType.OuterEdge ->
-                        offset.toMeter().toM() - orbiterContentSize.toMeterSize(density).width
+                        offset.toMeters(density, pixelDensity) -
+                            orbiterContentSize.toMeterSize(pixelDensity).width
                     else -> throw IllegalArgumentException("Invalid offsetType: $offsetType")
                 } * sideMultiplier
             val offsetVector =
                 Vector3(
                     x = layoutDirection.multiplier * xOffset,
                     y = 0f,
-                    z = elevation.toMeter().toM(),
+                    z = elevation.toMeters(density, pixelDensity),
                 )
 
             Pose(translation = anchorVector + offsetVector, rotation = Quaternion.Identity)
@@ -336,16 +345,18 @@ public fun Orbiter(
     content: @Composable @UiComposable () -> Unit,
 ) {
     val density = LocalDensity.current
+    val session = checkNotNull(LocalSession.current) { "session must be initialized" }
+    val pixelDensity = session.scene.virtualPixelDensity
 
     Orbiter(
         poseProvider = { targetSize, layoutDirection, orbiterContentSize ->
             val anchorVector =
                 anchorPoint.calculateAnchorVector(
-                    anchorHalfSize = targetSize.toMeterSize(density) / 2f,
+                    anchorHalfSize = targetSize.toMeterSize(pixelDensity) / 2f,
                     layoutDirection = layoutDirection,
-                    orbiterHalfSize = orbiterContentSize.toMeterSize(density) / 2f,
+                    orbiterHalfSize = orbiterContentSize.toMeterSize(pixelDensity) / 2f,
                 )
-            val offsetVector = offset.toMeterVector()
+            val offsetVector = offset.toMeterVector(density, pixelDensity)
 
             Pose(translation = anchorVector + offsetVector, rotation = Quaternion.Identity)
         },
@@ -396,7 +407,7 @@ public fun Orbiter(
 
     val session = checkNotNull(LocalSession.current) { "session must be initialized" }
     val parentView = LocalView.current
-    @Suppress("DEPRECATION") val localId = currentCompositeKeyHash
+    val localId = currentCompositeKeyHashCode
     val context = LocalContext.current
     val compositionContext = rememberCompositionContext()
     val parentEntity: CoreEntity? = findNearestParentEntity()
@@ -408,6 +419,7 @@ public fun Orbiter(
                 parentView = parentView,
                 compositionContext = compositionContext,
                 session = session,
+                pixelDensity = session.scene.virtualPixelDensity,
                 localId = localId,
                 initialPoseProvider = poseProvider,
                 initialShape = shape,
@@ -811,7 +823,7 @@ private fun PanelScrim() {
         Box(
             modifier =
                 Modifier.fillMaxSize().pointerInput(Unit) {
-                    detectTapGestures { dialogManager.isSpatialDialogActive.value = false }
+                    detectTapGestures { /* Prevent clicks to compose */ }
                 }
         )
     }
@@ -825,8 +837,8 @@ private fun PanelScrim() {
     }
 }
 
-private fun getWindowBoundsInPixels(session: Session): IntSize2d =
-    (session.context as Activity).window.decorView.run { IntSize2d(width, height) }
+private fun getWindowBoundsInPixels(context: Context): IntSize2d =
+    (context as Activity).window.decorView.run { IntSize2d(width, height) }
 
 /**
  * Provides the dimensions of the Android main window.
@@ -839,21 +851,22 @@ private fun getWindowBoundsInPixels(session: Session): IntSize2d =
  */
 @Composable
 private fun getMainWindowSize(session: Session): IntVolumeSize {
+    val context = LocalContext.current
     var panelSize by
         remember(session) {
-            val initialPixelDimensions = getWindowBoundsInPixels(session)
+            val initialPixelDimensions = getWindowBoundsInPixels(context)
             mutableStateOf(
                 IntVolumeSize(initialPixelDimensions.width, initialPixelDimensions.height, 0)
             )
         }
 
-    val mainView = (session.context as Activity).window.decorView
+    val mainView = (context as Activity).window.decorView
 
     DisposableEffect(Unit) {
         val listener =
             View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 val newSize =
-                    getWindowBoundsInPixels(session).run { IntVolumeSize(width, height, 0) }
+                    getWindowBoundsInPixels(context).run { IntVolumeSize(width, height, 0) }
                 if (panelSize != newSize) {
                     panelSize = newSize
                 }
@@ -887,7 +900,8 @@ private class SpatialOrbiter(
     private var parentView: View,
     private var compositionContext: CompositionContext,
     private var session: Session,
-    private var localId: Int,
+    private var pixelDensity: PixelDensity,
+    private var localId: Long,
     initialPoseProvider: OrbiterPoseProvider,
     initialShape: SpatialShape,
 ) : RememberObserver {
@@ -910,13 +924,15 @@ private class SpatialOrbiter(
         this.view = view
         panelEntity =
             CorePanelEntity(
-                    PanelEntity.create(
-                        session = session,
-                        parent = null,
-                        view = view,
-                        pixelDimensions = IntSize2d(0, 0),
-                        name = "Orbiter:${view.id}",
-                    )
+                    pixelDensity = pixelDensity,
+                    entity =
+                        PanelEntity.create(
+                            session = session,
+                            parent = null,
+                            view = view,
+                            pixelDimensions = IntSize2d(0, 0),
+                            name = "Orbiter:${view.id}",
+                        ),
                 )
                 .apply {
                     this.enabled = false
@@ -1039,11 +1055,12 @@ public value class OrbiterOffsetType private constructor(private val value: Int)
 private val LayoutDirection.multiplier: Float
     get() = if (this == LayoutDirection.Ltr) 1f else -1f
 
-private fun IntSize.toMeterSize(density: Density): FloatSize2d =
-    FloatSize2d(
-        width = Meter.fromPixel(width.toFloat(), density).toM(),
-        height = Meter.fromPixel(height.toFloat(), density).toM(),
-    )
+private fun IntSize.toMeterSize(pixelDensity: PixelDensity): FloatSize2d =
+    FloatSize2d(width = width.pxToMeters(pixelDensity), height = height.pxToMeters(pixelDensity))
 
-private fun DpVolumeOffset.toMeterVector(): Vector3 =
-    Vector3(x = x.toMeter().toM(), y = y.toMeter().toM(), z = z.toMeter().toM())
+private fun DpVolumeOffset.toMeterVector(density: Density, pixelDensity: PixelDensity): Vector3 =
+    Vector3(
+        x = x.toMeters(density, pixelDensity),
+        y = y.toMeters(density, pixelDensity),
+        z = z.toMeters(density, pixelDensity),
+    )

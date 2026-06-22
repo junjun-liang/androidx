@@ -28,6 +28,7 @@ import androidx.annotation.RestrictTo
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.xr.arcore.Trackable
+import androidx.xr.runtime.Config
 import androidx.xr.runtime.math.Pose
 import androidx.xr.scenecore.runtime.ActivityPanelEntity
 import androidx.xr.scenecore.runtime.AnchorEntity
@@ -64,9 +65,12 @@ import androidx.xr.scenecore.runtime.SubspaceNodeEntity
 import androidx.xr.scenecore.runtime.SurfaceEntity
 import androidx.xr.scenecore.runtime.SurfaceFeature
 import androidx.xr.scenecore.runtime.TrackableComponent
+import androidx.xr.scenecore.testing.internal.FakeActivityPanelEntity as InternalFakeActivityPanelEntity
 import androidx.xr.scenecore.testing.internal.FakeAnchorEntity as InternalFakeAnchorEntity
+import androidx.xr.scenecore.testing.internal.FakeBoundsComponent as InternalFakeBoundsComponent
 import androidx.xr.scenecore.testing.internal.FakeEntity as InternalFakeEntity
 import androidx.xr.scenecore.testing.internal.FakeMeshEntity as InternalFakeMeshEntity
+import androidx.xr.scenecore.testing.internal.FakePanelEntity as InternalFakePanelEntity
 import androidx.xr.scenecore.testing.internal.FakePerceptionSpaceScenePose as InternalFakePerceptionSpaceScenePose
 import androidx.xr.scenecore.testing.internal.FakePositionalAudioComponent as InternalFakePositionalAudioComponent
 import androidx.xr.scenecore.testing.internal.FakeSceneRuntime as InternalFakeSceneRuntime
@@ -102,6 +106,7 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
     private var _state: Enum<State> = State.CREATED
 
     /** The last [FakeMovableComponent] created or injected via [createMovableComponent]. */
+    // TODO: b/514807603 - Remove this property once xr:compose tests migrate to SceneCoreTestRule.
     public var lastMovableComponent: FakeMovableComponent? = null
         private set
 
@@ -113,6 +118,9 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
      */
     public val state: Enum<State>
         get() = _state
+
+    override val config: Config
+        get() = internalRuntime.config
 
     override var spatialCapabilities: SpatialCapabilities
         get() = internalRuntime.spatialCapabilities
@@ -138,7 +146,8 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
     override val mediaPlayerExtensionsWrapper: FakeMediaPlayerExtensionsWrapper =
         FakeMediaPlayerExtensionsWrapper(internalRuntime.mediaPlayerExtensionsWrapper)
 
-    override val mainPanelEntity: PanelEntity = FakePanelEntity()
+    override val mainPanelEntity: PanelEntity =
+        FakePanelEntity(null, "", internalRuntime.mainPanelEntity as InternalFakePanelEntity)
 
     private var _keyEntity: Entity? = null
 
@@ -183,6 +192,10 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
 
     public var deviceDpPerMeter: Float = DEFAULT_DP_PER_METER
 
+    override fun configure(config: Config) {
+        internalRuntime.configure(config)
+    }
+
     override fun createPanelEntity(
         context: Context,
         pose: Pose,
@@ -190,13 +203,19 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
         dimensions: Dimensions,
         name: String,
         parent: Entity?,
-    ): PanelEntity =
-        FakePanelEntity(view, name).apply {
-            dpPerMeter = deviceDpPerMeter
-            size = dimensions
+    ): PanelEntity {
+        val fakePanelEntity =
+            FakePanelEntity(
+                view,
+                name,
+                internalRuntime.createPanelEntity(context, pose, view, dimensions, name, parent)
+                    as InternalFakePanelEntity,
+            )
+        return fakePanelEntity.apply {
             this.parent = parent
             setPose(pose)
         }
+    }
 
     override fun createPanelEntity(
         context: Context,
@@ -205,13 +224,27 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
         pixelDimensions: PixelDimensions,
         name: String,
         parent: Entity?,
-    ): PanelEntity =
-        FakePanelEntity(view, name).apply {
+    ): PanelEntity {
+        val fakePanelEntity =
+            FakePanelEntity(
+                view,
+                name,
+                internalRuntime.createPanelEntity(
+                    context,
+                    pose,
+                    view,
+                    pixelDimensions,
+                    name,
+                    parent,
+                ) as InternalFakePanelEntity,
+            )
+        return fakePanelEntity.apply {
             dpPerMeter = deviceDpPerMeter
             sizeInPixels = pixelDimensions
             this.parent = parent
             setPose(pose)
         }
+    }
 
     override fun createActivityPanelEntity(
         pose: Pose,
@@ -220,12 +253,22 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
         hostActivity: Activity,
         parent: Entity?,
     ): ActivityPanelEntity =
-        FakeActivityPanelEntity(name).apply {
-            dpPerMeter = deviceDpPerMeter
-            sizeInPixels = windowBoundsPx
-            this.parent = parent
-            setPose(pose)
-        }
+        FakeActivityPanelEntity(
+                name,
+                internalRuntime.createActivityPanelEntity(
+                    pose,
+                    windowBoundsPx,
+                    name,
+                    hostActivity,
+                    parent,
+                ) as InternalFakeActivityPanelEntity,
+            )
+            .apply {
+                dpPerMeter = deviceDpPerMeter
+                sizeInPixels = windowBoundsPx
+                this.parent = parent
+                setPose(pose)
+            }
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun createAnchorEntity(): AnchorEntity {
@@ -301,11 +344,6 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
         entity.parent = parent
 
         return entity
-    }
-
-    @Deprecated("Use createEntity instead.")
-    override fun createGroupEntity(pose: Pose, name: String, parent: Entity?): Entity {
-        return createEntity(pose, name, parent)
     }
 
     override fun createLoggingEntity(pose: Pose): LoggingEntity =
@@ -467,10 +505,10 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
         scaleInZ: Boolean,
         userAnchorable: Boolean,
     ): FakeMovableComponent {
-        val movableComponent = FakeMovableComponent()
-        movableComponent.systemMovable = systemMovable
-        movableComponent.scaleInZ = scaleInZ
-        movableComponent.userAnchorable = userAnchorable
+        val movableComponent =
+            FakeMovableComponent(
+                internalRuntime.createMovableComponent(systemMovable, scaleInZ, userAnchorable)
+            )
         lastMovableComponent = movableComponent
         return movableComponent
     }
@@ -493,8 +531,9 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
         maximumSize: Dimensions,
     ): FakeResizableComponent {
         val resizableComponent =
-            FakeResizableComponent(minimumSize = minimumSize, maximumSize = maximumSize)
-
+            FakeResizableComponent(
+                fakeInternal = internalRuntime.createResizableComponent(minimumSize, maximumSize)
+            )
         return resizableComponent
     }
 
@@ -504,15 +543,24 @@ public class FakeSceneRuntime(public val executor: Executor? = null) :
         stateListener: PointerCaptureComponent.StateListener,
         inputListener: InputEventListener,
     ): FakePointerCaptureComponent {
-        val pointerCaptureComponent = FakePointerCaptureComponent(executor, stateListener)
-        pointerCaptureComponent.inputListener = inputListener
-        return pointerCaptureComponent
+        return FakePointerCaptureComponent(
+            fakeInternal =
+                internalRuntime.createPointerCaptureComponent(
+                    executor,
+                    stateListener,
+                    inputListener,
+                )
+        )
     }
 
     override fun createSpatialPointerComponent(): SpatialPointerComponent =
         FakeSpatialPointerComponent()
 
-    override fun createBoundsComponent(): BoundsComponent = FakeBoundsComponent()
+    override fun createBoundsComponent(): BoundsComponent {
+        return FakeBoundsComponent(
+            internalRuntime.createBoundsComponent() as InternalFakeBoundsComponent
+        )
+    }
 
     // Assuming the subspaceNodeHolder contains a valid FakeSubspaceNode and a valid FakeNode.
     public fun createSubspaceNodeEntity(node: FakeNode, size: Dimensions): SubspaceNodeEntity =

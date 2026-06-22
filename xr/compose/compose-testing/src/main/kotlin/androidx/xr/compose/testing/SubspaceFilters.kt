@@ -28,13 +28,13 @@ import androidx.xr.compose.subspace.node.SubspaceSemanticsInfo
  * separate 2D semantics tree.
  *
  * @param value The exact or partial description string expected on the spatial node.
- * @param substring If true, matches any node whose description contains [value]. Defaults to false.
+ * @param substring If true, matches any node whose description contains [value]. Defaults to true.
  * @param ignoreCase If true, case differences are ignored during comparison. Defaults to false.
  * @return a matcher validating the presence of the content description.
  */
 public fun hasContentDescription(
     value: String,
-    substring: Boolean = false,
+    substring: Boolean = true,
     ignoreCase: Boolean = false,
 ): SubspaceSemanticsMatcher {
     return if (substring) {
@@ -42,7 +42,7 @@ public fun hasContentDescription(
             "${SemanticsProperties.ContentDescription.name} contains '$value' " +
                 "(ignoreCase: $ignoreCase)"
         ) {
-            it.semanticsConfiguration.getOrNull(SemanticsProperties.ContentDescription)?.any { item
+            it.semanticsConfiguration?.getOrNull(SemanticsProperties.ContentDescription)?.any { item
                 ->
                 item.contains(value, ignoreCase)
             } ?: false
@@ -51,7 +51,7 @@ public fun hasContentDescription(
         SubspaceSemanticsMatcher(
             "${SemanticsProperties.ContentDescription.name} = '$value' (ignoreCase: $ignoreCase)"
         ) {
-            it.semanticsConfiguration.getOrNull(SemanticsProperties.ContentDescription)?.any { item
+            it.semanticsConfiguration?.getOrNull(SemanticsProperties.ContentDescription)?.any { item
                 ->
                 item.equals(value, ignoreCase)
             } ?: false

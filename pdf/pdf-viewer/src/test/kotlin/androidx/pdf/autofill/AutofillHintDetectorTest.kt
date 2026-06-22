@@ -87,7 +87,7 @@ class AutofillHintDetectorTest {
             .contains(HintConstants.AUTOFILL_HINT_PERSON_NAME)
         assertThat(detector.detectHints("contact person"))
             .contains(HintConstants.AUTOFILL_HINT_PERSON_NAME)
-        assertThat(detector.detectHints("receiver"))
+        assertThat(detector.detectHints("receiver name"))
             .contains(HintConstants.AUTOFILL_HINT_PERSON_NAME)
     }
 
@@ -302,6 +302,11 @@ class AutofillHintDetectorTest {
             .doesNotContain(HintConstants.AUTOFILL_HINT_POSTAL_ADDRESS_REGION)
         assertThat(detector.detectHints("history state"))
             .doesNotContain(HintConstants.AUTOFILL_HINT_POSTAL_ADDRESS_REGION)
+
+        assertThat(detector.detectHints("First Person's state"))
+            .doesNotContain(HintConstants.AUTOFILL_HINT_PERSON_NAME_GIVEN)
+        assertThat(detector.detectHints("Second Person's city"))
+            .doesNotContain(HintConstants.AUTOFILL_HINT_PERSON_NAME_FAMILY)
     }
 
     @Test

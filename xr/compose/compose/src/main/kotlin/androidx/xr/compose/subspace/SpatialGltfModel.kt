@@ -21,7 +21,6 @@ import android.net.Uri
 import android.os.Build
 import androidx.annotation.RawRes
 import androidx.annotation.RequiresApi
-import androidx.annotation.RestrictTo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
@@ -109,7 +108,7 @@ public fun SpatialGltfModel(
     content: @Composable @SubspaceComposable () -> Unit = {},
 ) {
     val session = checkNotNull(LocalSession.current) { "session must be initialized" }
-    val coreModelEntity = remember { CoreModelEntity() }
+    val coreModelEntity = remember { CoreModelEntity(session.scene.virtualPixelDensity) }
 
     LaunchedEffect(state, session, coreModelEntity) { state.load(session, coreModelEntity) }
 
@@ -197,11 +196,18 @@ public class SpatialGltfModelState(internal val source: SpatialGltfModelSource) 
      *
      * @sample androidx.xr.compose.samples.SpatialGltfModelAnimationSample
      */
-    public val animations: List<SpatialGltfModelAnimation>
-        @RequiresApi(Build.VERSION_CODES.O) get() = Collections.unmodifiableList(_animations)
+    @ExperimentalSpatialGltfAnimationApi
+    @RequiresApi(Build.VERSION_CODES.O)
+    public fun getAnimations(): List<SpatialGltfModelAnimation> =
+        Collections.unmodifiableList(_animations)
 
+    @kotlin.OptIn(ExperimentalSpatialGltfAnimationApi::class)
     private val _animations: SnapshotStateList<SpatialGltfModelAnimation> = mutableStateListOf()
 
+    @kotlin.OptIn(
+        ExperimentalSpatialGltfAnimationApi::class,
+        androidx.xr.scenecore.ExperimentalGltfAnimationApi::class,
+    )
     internal suspend fun load(session: Session, coreModelEntity: CoreModelEntity) {
         try {
             _status.value = SpatialGltfModelStatus.Loading
@@ -230,6 +236,7 @@ public class SpatialGltfModelState(internal val source: SpatialGltfModelSource) 
         }
     }
 
+    @kotlin.OptIn(ExperimentalSpatialGltfAnimationApi::class)
     override fun close() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             _animations.fastForEach { it.close() }
@@ -338,7 +345,6 @@ public interface SpatialGltfModelSource {
          *   composable.
          */
         @JvmStatic
-        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
         public fun fromResource(context: Context, @RawRes resId: Int): SpatialGltfModelSource =
             ResourceGltfModelSource(context.applicationContext, resId)
 
@@ -433,6 +439,8 @@ private class SpatialGltfModelMeasurePolicy(private val modelSize: IntVolumeSize
  * This may be used to inspect or control the state of this animation.
  */
 @RequiresApi(Build.VERSION_CODES.O)
+@ExperimentalSpatialGltfAnimationApi
+@kotlin.OptIn(androidx.xr.scenecore.ExperimentalGltfAnimationApi::class)
 public class SpatialGltfModelAnimation internal constructor(private val animation: GltfAnimation) :
     AutoCloseable {
 

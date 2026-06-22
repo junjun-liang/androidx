@@ -19,6 +19,7 @@ package androidx.wear.compose.material3.onehandedgesture
 import android.annotation.SuppressLint
 import android.content.Context
 import android.view.View
+import android.view.ViewGroup
 import androidx.collection.MutableIntObjectMap
 import androidx.collection.intListOf
 import androidx.collection.mutableIntObjectMapOf
@@ -36,6 +37,7 @@ import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastFirstOrNull
 import androidx.compose.ui.util.fastForEach
 import androidx.core.content.ContextCompat
+import androidx.wear.compose.material3.R
 import androidx.wear.utils.WearApiVersionHelper
 import com.google.wear.Sdk
 import com.google.wear.input.ForegroundGestureSubscriptionParams
@@ -109,6 +111,29 @@ internal interface GestureManager {
      * @param view The [View] containing the gesturable content.
      */
     fun invalidateGestures(view: View)
+
+    /**
+     * Determines whether the specified gesture indicator should be displayed to the user.
+     *
+     * @param action The specific [GestureAction] to evaluate.
+     * @param key The unique identifier associated with this gesture instance.
+     * @param isOverlay True if the indicator draws outside the boundary of its associated UI
+     *   element (e.g., scroll indicator hints rendered adjacent to the track). False if the
+     *   indicator is completely contained within the element's layout bounds (e.g., button hints).
+     * @return True if the conditions are met to display the gesture indicator, false otherwise.
+     */
+    fun shouldShowGestureIndicator(action: GestureAction, key: String, isOverlay: Boolean): Boolean
+
+    /**
+     * Notifies the manager that a gesture indicator has been successfully displayed to the user.
+     *
+     * This acts as an acknowledgment callback and allows the manager to track presentation state
+     * and manage indicator display limits.
+     *
+     * @param action The specific [GestureAction] whose indicator was presented.
+     * @param key The unique identifier associated with the displayed gesture instance.
+     */
+    fun notifyIndicatorShown(action: GestureAction, key: String)
 }
 
 internal class GestureManagerImpl(
@@ -152,6 +177,18 @@ internal class GestureManagerImpl(
     override fun invalidateGestures(view: View) {
         gestureRegistries[view]?.invalidate()
     }
+
+    override fun shouldShowGestureIndicator(
+        action: GestureAction,
+        key: String,
+        isOverlay: Boolean,
+    ): Boolean {
+        return gestureInputManager.shouldShowIndicator(key, toSdkGestureAction(action), isOverlay)
+    }
+
+    override fun notifyIndicatorShown(action: GestureAction, key: String) {
+        gestureInputManager.notifyIndicatorShown(key, toSdkGestureAction(action))
+    }
 }
 
 internal class GestureRegistry(
@@ -163,25 +200,30 @@ internal class GestureRegistry(
     val numberOfRegisteredGestures: Int
         get() = registeredGestures.size
 
+    private val gestureAccessibilityAnnouncer: GestureAccessibilityAnnouncer =
+        GestureAccessibilityAnnouncer(view)
+
     fun register(config: GestureConfig, isActive: () -> Boolean, size: () -> IntSize) {
-        registeredGestures.add(Triple(config, isActive, size))
-        registeredGestures.sortWith { (gesture1), (gesture2) ->
-            gesture2.priority - gesture1.priority
+        gestureAccessibilityAnnouncer.attach(config.action)
+        registeredGestures.add(RegisteredGesture(config, isActive, size))
+        registeredGestures.sortWith { gesture1, gesture2 ->
+            gesture2.config.priority - gesture1.config.priority
         }
 
         invalidate()
     }
 
-    fun unregister(gesture: GestureConfig) {
-        if (registeredGestures.removeIf { (g, _) -> g == gesture }) {
+    fun unregister(config: GestureConfig) {
+        if (registeredGestures.removeIf { (g, _) -> g == config }) {
+            gestureAccessibilityAnnouncer.detach(config.action)
             invalidate()
         }
     }
 
     fun update(oldGesture: GestureConfig, newGesture: GestureConfig) {
         val index = registeredGestures.indexOfFirst { (g, _) -> g == oldGesture }
-        val isActive = registeredGestures[index].second
-        val size = registeredGestures[index].third
+        val isActive = registeredGestures[index].isActive
+        val size = registeredGestures[index].size
 
         registeredGestures.removeAt(index)
         register(newGesture, isActive, size)
@@ -205,29 +247,36 @@ internal class GestureRegistry(
                 // A slight delay of 1s to avoid jumping indicators while the user is mid-flick.
                 delay(1000)
 
-                val sdkPrimaryAction = toSdkGestureAction(GestureAction.Primary)
-                // Make a copy of registeredGestures, because invoking onShowIndicator() might
-                // modify the list
+                // Make a copy of registeredGestures, because emitting Indicate() might modify the
+                // list
                 val snapshot = registeredGestures.toList()
                 // Since gestures are sorted by priority, the first visible gesture corresponds
                 // to the highest priority.
-                val priority =
-                    snapshot
-                        .fastFirstOrNull { (gesture, isActive) ->
-                            isActive() && gesture.action == GestureAction.Primary
-                        }
-                        ?.first
-                        ?.priority
+                supportedSdkGestureActions.forEach { sdkAction ->
+                    val gestureAction = fromSdkGestureAction(sdkAction)
+                    val priority =
+                        snapshot
+                            .fastFirstOrNull { gesture ->
+                                gesture.isActive() && gesture.config.action == gestureAction
+                            }
+                            ?.config
+                            ?.priority
 
-                snapshot.fastForEach { (gesture, isActive) ->
-                    if (
-                        gesture.priority == priority &&
-                            gesture.action == GestureAction.Primary &&
-                            isActive() &&
-                            gestureInputManager.shouldShowIndicator(gesture.key, sdkPrimaryAction)
-                    ) {
-                        gesture.onShowIndicator()
-                        gestureInputManager.notifyIndicatorShown(gesture.key, sdkPrimaryAction)
+                    snapshot.fastForEach { gesture ->
+                        if (
+                            gesture.config.priority == priority &&
+                                gesture.config.action == gestureAction &&
+                                gesture.isActive()
+                        ) {
+                            gesture.config.interactionSource?.emit(
+                                OneHandedGestureInteraction.Indicate(
+                                    gesture.config.action,
+                                    gesture.config.key,
+                                )
+                            )
+
+                            gestureAccessibilityAnnouncer.announce(gesture.config)
+                        }
                     }
                 }
             }
@@ -260,12 +309,16 @@ internal class GestureRegistry(
     private fun isEnabledInAmbient(action: GestureAction): Boolean {
         val priority =
             registeredGestures
-                .fastFirstOrNull { (gesture, isActive) -> gesture.action == action && isActive() }
-                ?.first
+                .fastFirstOrNull { gesture ->
+                    gesture.config.action == action && gesture.isActive()
+                }
+                ?.config
                 ?.priority
         return priority?.let { prio ->
-            registeredGestures.fastAny { (gesture, isActive) ->
-                gesture.priority == prio && isActive() && gesture.enabledInAmbient
+            registeredGestures.fastAny { gesture ->
+                gesture.config.priority == prio &&
+                    gesture.isActive() &&
+                    gesture.config.enabledInAmbient
             }
         } ?: false
     }
@@ -304,55 +357,45 @@ internal class GestureRegistry(
             // both visible and matches the requested action will have the highest priority
             val priority =
                 snapshot
-                    .fastFirstOrNull { (gesture, isActive) ->
-                        isActive() && gesture.action == gestureAction
+                    .fastFirstOrNull { gesture ->
+                        gesture.isActive() && gesture.config.action == gestureAction
                     }
-                    ?.first
+                    ?.config
                     ?.priority
 
             // Trigger all the visible gestures for the highest priority
             var hapticDone = false
-            snapshot.fastForEach { (gesture, isActive, size) ->
-                if (gesture.priority == priority && gesture.action == gestureAction && isActive()) {
+            snapshot.fastForEach { gesture ->
+                if (
+                    gesture.config.priority == priority &&
+                        gesture.config.action == gestureAction &&
+                        gesture.isActive()
+                ) {
                     if (!hapticDone) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         hapticDone = true
                     }
 
-                    gesture.interactionSource?.let { source ->
-                        val press = PressInteraction.Press(size().center.toOffset())
+                    gesture.config.interactionSource?.let { source ->
+                        val press = PressInteraction.Press(gesture.size().center.toOffset())
                         source.emit(press)
                         source.emit(PressInteraction.Release(press))
                     }
 
-                    gesture.onGesture()
+                    gesture.config.onGesture()
                     gestureInputManager.notifyGestureConsumed(
-                        gesture.key,
-                        toSdkGestureAction(gesture.action),
+                        gesture.config.key,
+                        toSdkGestureAction(gesture.config.action),
                     )
                 }
             }
         }
     }
 
-    private fun toSdkGestureAction(gestureAction: GestureAction): Int {
-        return when (gestureAction) {
-            GestureAction.Dismiss -> GestureEvent.ACTION_DISMISS
-            else -> GestureEvent.ACTION_PRIMARY
-        }
-    }
-
-    private fun fromSdkGestureAction(sdkGestureAction: Int): GestureAction {
-        return when (sdkGestureAction) {
-            GestureEvent.ACTION_DISMISS -> GestureAction.Dismiss
-            else -> GestureAction.Primary
-        }
-    }
-
     /** Returns true if there are visible [action] gestures */
     private fun shouldListenToGesture(action: GestureAction): Boolean {
-        return registeredGestures.fastFirstOrNull { (gesture, isActive) ->
-            gesture.action == action && isActive()
+        return registeredGestures.fastFirstOrNull { gesture ->
+            gesture.config.action == action && gesture.isActive()
         } != null
     }
 
@@ -361,9 +404,7 @@ internal class GestureRegistry(
         intListOf(GestureEvent.ACTION_PRIMARY, GestureEvent.ACTION_DISMISS)
 
     /** List of registered gestures, sorted by priority (descending). */
-    private val registeredGestures:
-        MutableList<Triple<GestureConfig, () -> Boolean, () -> IntSize>> =
-        mutableListOf()
+    private val registeredGestures: MutableList<RegisteredGesture> = mutableListOf()
 
     /**
      * Coroutine job that periodically evaluates the [registeredGestures] to identify the
@@ -374,6 +415,12 @@ internal class GestureRegistry(
     /** Tracks the 'ambientEnabled' state for each registered GestureAction */
     private val gestureActionIsAmbientEnabled: MutableIntObjectMap<Boolean> =
         mutableIntObjectMapOf()
+
+    private data class RegisteredGesture(
+        val config: GestureConfig,
+        val isActive: () -> Boolean,
+        val size: () -> IntSize,
+    )
 }
 
 internal interface SdkGestureInputManager {
@@ -390,7 +437,7 @@ internal interface SdkGestureInputManager {
 
     fun notifyGestureConsumed(key: String, sdkGestureAction: Int)
 
-    fun shouldShowIndicator(key: String, sdkGestureAction: Int): Boolean
+    fun shouldShowIndicator(key: String, sdkGestureAction: Int, isOverlay: Boolean): Boolean
 
     fun notifyIndicatorShown(key: String, sdkGestureAction: Int)
 }
@@ -453,10 +500,22 @@ internal class SdkGestureInputManagerImpl : SdkGestureInputManager {
         }
     }
 
-    override fun shouldShowIndicator(key: String, sdkGestureAction: Int): Boolean =
-        gestureInputManager?.isActionSupported(sdkGestureAction) == true &&
-            gestureInputManager?.isActionEnabled(sdkGestureAction) == true &&
-            gestureInputManager?.shouldShowHint(key, sdkGestureAction) == true
+    override fun shouldShowIndicator(
+        key: String,
+        sdkGestureAction: Int,
+        isOverlay: Boolean,
+    ): Boolean {
+        val isEnabled =
+            gestureInputManager?.isActionSupported(sdkGestureAction) == true &&
+                gestureInputManager?.isActionEnabled(sdkGestureAction) == true
+        if (WearApiVersionHelper.isApiVersionAtLeast(WearApiVersionHelper.WEAR_CINNAMON_BUN_0)) {
+            val flags = if (isOverlay) GestureInputManager.FLAG_HINT_STYLE_OVERLAY else 0
+            return isEnabled &&
+                gestureInputManager?.shouldShowHint(key, sdkGestureAction, flags) == true
+        } else {
+            return isEnabled && gestureInputManager?.shouldShowHint(key, sdkGestureAction) == true
+        }
+    }
 
     override fun notifyIndicatorShown(key: String, sdkGestureAction: Int) {
         if (gestureInputManager?.isActionSupported(sdkGestureAction) == true) {
@@ -479,13 +538,110 @@ internal class SdkGestureInputManagerImpl : SdkGestureInputManager {
     }
 }
 
+private fun toSdkGestureAction(gestureAction: GestureAction): Int {
+    return when (gestureAction) {
+        GestureAction.Dismiss -> GestureEvent.ACTION_DISMISS
+        else -> GestureEvent.ACTION_PRIMARY
+    }
+}
+
+private fun fromSdkGestureAction(sdkGestureAction: Int): GestureAction {
+    return when (sdkGestureAction) {
+        GestureEvent.ACTION_DISMISS -> GestureAction.Dismiss
+        else -> GestureAction.Primary
+    }
+}
+
+/**
+ * Responsible for managing accessibility announcements for gestures. This class is designed as a
+ * singleton per [GestureManager]. It manages the lifecycle of multiple accessibility "anchor" views
+ * (one per [GestureAction]), ensuring that views are added to the hierarchy only when needed and
+ * removed when no longer in use.
+ *
+ * @property container The host view where accessibility announcer views are added; typically an
+ *   AndroidComposeView
+ */
+private class GestureAccessibilityAnnouncer(val container: View) {
+    private val gestureAnnouncers = mutableIntObjectMapOf<ViewRefCount>()
+
+    /**
+     * Registers a [GestureAction] and creates a hidden accessibility view if one does not already
+     * exist.
+     * * If an announcer view for this action is already registered, its reference count is
+     *   incremented.
+     *
+     * @param action The [GestureAction] to attach
+     */
+    fun attach(action: GestureAction) {
+        val host = container as? ViewGroup ?: return
+
+        if (gestureAnnouncers.contains(action.value)) {
+            gestureAnnouncers[action.value]!!.refCount++
+        } else {
+            val hiddenAnnouncer =
+                View(host.context).apply {
+                    layoutParams = ViewGroup.LayoutParams(1, 1)
+                    visibility = View.VISIBLE
+                    alpha = 0f
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                    accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+                }
+            host.addView(hiddenAnnouncer)
+            gestureAnnouncers[action.value] = ViewRefCount(hiddenAnnouncer)
+        }
+    }
+
+    /**
+     * Unregisters a [GestureAction].
+     * * The associated accessibility view is removed from the [container] only when the reference
+     *   count drops to zero
+     *
+     * @param action The [GestureAction] to release
+     */
+    fun detach(action: GestureAction) {
+        val viewRefCount = gestureAnnouncers[action.value] ?: return
+
+        viewRefCount.refCount--
+        if (viewRefCount.refCount <= 0) {
+            (container as? ViewGroup)?.removeView(viewRefCount.view)
+            gestureAnnouncers.remove(action.value)
+        }
+    }
+
+    /**
+     * Updates the content description of the announcer view associated with the given [config] to
+     * trigger an accessibility announcement.
+     * * This should be called by the `GestureManager` when a prioritized gesture is detected.
+     *
+     * @param config The [GestureConfig] defining the gesture and label to announce.
+     */
+    fun announce(config: GestureConfig) {
+        val stringId = getGestureLabelStringId(config.action)
+        val resources = gestureAnnouncers[config.action.value]?.view?.resources
+        if (stringId != null && config.gestureLabel != null && resources != null) {
+            gestureAnnouncers[config.action.value]?.view?.contentDescription =
+                resources.getString(stringId, config.gestureLabel)
+        }
+    }
+
+    private fun getGestureLabelStringId(action: GestureAction): Int? {
+        return when (action) {
+            GestureAction.Primary -> R.string.one_handed_gesture_primary_action_accessibility_text
+            GestureAction.Dismiss -> R.string.one_handed_gesture_dismiss_action_accessibility_text
+            else -> null
+        }
+    }
+
+    private data class ViewRefCount(val view: View, var refCount: Int = 1)
+}
+
 internal data class GestureConfig(
     val action: GestureAction,
+    val gestureLabel: String?,
     val key: String,
     val priority: Int,
     val enabledInAmbient: Boolean,
     val interactionSource: MutableInteractionSource?,
-    val onShowIndicator: () -> Unit,
     val onGesture: suspend () -> Unit,
 )
 

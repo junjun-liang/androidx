@@ -21,7 +21,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.xr.arcore.testing.ArCoreTestRule
 import androidx.xr.runtime.Config
 import androidx.xr.runtime.DeviceTrackingMode
-import androidx.xr.runtime.PreviewSpatialApi
 import androidx.xr.runtime.Session
 import androidx.xr.runtime.SessionCreateSuccess
 import androidx.xr.runtime.manifest.HEAD_TRACKING
@@ -31,6 +30,7 @@ import androidx.xr.runtime.math.Vector3
 import com.google.common.truth.Truth.assertThat
 import kotlin.test.assertFailsWith
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -55,7 +55,7 @@ class ArDeviceTest {
     private lateinit var session: Session
 
     @Before
-    fun setUp() {
+    fun setUp(): Unit = runBlocking {
         testDispatcher = StandardTestDispatcher()
         testScope = TestScope(testDispatcher)
         activityController = Robolectric.buildActivity(ComponentActivity::class.java)
@@ -76,7 +76,7 @@ class ArDeviceTest {
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun pose_SpatialLastKnown_tracksTranslationAndRotation() {
-        session.configure(Config(deviceTracking = DeviceTrackingMode.SPATIAL))
+        session.configure(Config.Builder().setDeviceTracking(DeviceTrackingMode.SPATIAL).build())
         runTest(testDispatcher) {
             val expectedPose = Pose(Vector3(1f, 2f, 3f), Quaternion(4f, 5f, 6f, 7f))
             arCoreTestRule.deviceTester.pose = expectedPose
@@ -91,10 +91,12 @@ class ArDeviceTest {
         }
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class, PreviewSpatialApi::class)
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun pose_InertialLastKnown_onlyTracksRotation() {
-        session.configure(Config(deviceTracking = DeviceTrackingMode.INERTIAL))
+        session.configure(
+            Config.Builder().setDeviceTracking(createInertialDeviceTrackingMode()).build()
+        )
         runTest(testDispatcher) {
             val expectedPose = Pose(Vector3(1f, 2f, 3f), Quaternion(4f, 5f, 6f, 7f))
             arCoreTestRule.deviceTester.pose = expectedPose
@@ -112,9 +114,16 @@ class ArDeviceTest {
 
     @Test
     fun getInstance_deviceTrackingDisabled_throwsIllegalStateException() {
-        session.configure(Config(deviceTracking = DeviceTrackingMode.DISABLED))
+        session.configure(Config.Builder().setDeviceTracking(DeviceTrackingMode.DISABLED).build())
         runTest(testDispatcher) {
             assertFailsWith<IllegalStateException> { ArDevice.getInstance(session) }
         }
+    }
+
+    private fun createInertialDeviceTrackingMode(): DeviceTrackingMode {
+        val constructor =
+            DeviceTrackingMode::class.java.getDeclaredConstructor(Int::class.javaPrimitiveType!!)
+        constructor.isAccessible = true
+        return constructor.newInstance(2)
     }
 }

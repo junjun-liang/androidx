@@ -22,7 +22,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.xr.arcore.runtime.PerceptionRuntime
-import androidx.xr.runtime.AnchorPersistenceMode
 import androidx.xr.runtime.Config
 import androidx.xr.runtime.DepthEstimationMode
 import androidx.xr.runtime.DeviceTrackingMode
@@ -31,6 +30,7 @@ import androidx.xr.runtime.FaceTrackingMode
 import androidx.xr.runtime.GeospatialMode
 import androidx.xr.runtime.HandTrackingMode
 import androidx.xr.runtime.PlaneTrackingMode
+import androidx.xr.runtime.QrCodeTrackingMode
 import androidx.xr.runtime.XrDevice
 import androidx.xr.runtime.getNativeInstanceData
 import androidx.xr.runtime.internal.FaceTrackingNotCalibratedException
@@ -82,25 +82,12 @@ internal class OpenXrRuntime(
         }
 
     /** The current state of the runtime configuration for the session. */
-    // TODO(b/392660855): Disable all features by default once this API is fully implemented.
-    override var config: Config =
-        Config(
-            PlaneTrackingMode.DISABLED,
-            HandTrackingMode.DISABLED,
-            DeviceTrackingMode.DISABLED,
-            DepthEstimationMode.DISABLED,
-            AnchorPersistenceMode.LOCAL,
-            augmentedObjectCategories = setOf(),
-            augmentedImageDatabase = null,
-        )
-        private set(value) {
-            field = value
-        }
+    override var config: Config = Config.Builder().build()
+        private set
 
     var instanceProcAddr: Long = 0L
         private set
 
-    @OptIn(androidx.xr.runtime.UnstableNativeResourceApi::class)
     override fun initialize() {
         nativePointer = nativeGetPointer()
         val nativeInstanceData = XrDevice.getCurrentDevice(context).getNativeInstanceData(context)
@@ -148,6 +135,10 @@ internal class OpenXrRuntime(
             perceptionManager.updateAugmentedImages(xrTime)
         }
 
+        if (config.qrCodeTracking != QrCodeTrackingMode.DISABLED) {
+            perceptionManager.updateQrCode(xrTime)
+        }
+
         perceptionManager.update(xrTime)
         // Block the call for a time that is appropriate for OpenXR devices.
         // TODO: b/359871229 - Implement dynamic delay. We start with a fixed 20ms delay as it is
@@ -157,7 +148,6 @@ internal class OpenXrRuntime(
         return now
     }
 
-    @OptIn(androidx.xr.runtime.PreviewSpatialApi::class)
     override fun configure(config: Config) {
         if (config.geospatial == GeospatialMode.INERTIAL) {
             throw UnsupportedOperationException(
@@ -203,6 +193,24 @@ internal class OpenXrRuntime(
             }
         }
 
+        if (config.qrCodeTracking != QrCodeTrackingMode.DISABLED) {
+            if (
+                config.qrCodeSizeMeters < 0f ||
+                    (config.qrCodeSizeMeters == 0f &&
+                        !perceptionManager.isQrCodeSizeEstimationSupported)
+            ) {
+                throw IllegalArgumentException(
+                    "Failed to configure session: " +
+                        if (config.qrCodeSizeMeters < 0f) {
+                            "qrCodeSizeMeters must be a non-negative value."
+                        } else {
+                            "the device does not support QR code size estimation and " +
+                                "qrCodeSizeMeters is 0, which requires size estimation."
+                        }
+                )
+            }
+        }
+
         val objectLabels: MutableList<Long> = mutableListOf()
         var objectMode: Int = 0
 
@@ -231,6 +239,8 @@ internal class OpenXrRuntime(
                         config.augmentedImageDatabase?.let {
                             OpenXrAugmentedImageDatabase.fromAugmentedImageDatabase(it)
                         },
+                    qrCodeTracking = config.qrCodeTracking.mode,
+                    qrCodeSizeMeters = config.qrCodeSizeMeters,
                 )
             ) {
                 -2L ->
@@ -384,6 +394,8 @@ internal class OpenXrRuntime(
         objectLabels: LongArray,
         geospatial: Int,
         augmentedImageDatabase: OpenXrAugmentedImageDatabase? = null,
+        qrCodeTracking: Int,
+        qrCodeSizeMeters: Float = 0f,
     ): Long
 
     private external fun nativeGetFaceTrackerCalibration(): Boolean

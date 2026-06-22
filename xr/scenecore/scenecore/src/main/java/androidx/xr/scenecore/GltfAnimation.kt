@@ -45,6 +45,7 @@ import kotlinx.coroutines.asExecutor
  */
 @Suppress("NotCloseable")
 @RequiresApi(Build.VERSION_CODES.O)
+@ExperimentalGltfAnimationApi
 public class GltfAnimation
 internal constructor(
     private val rtGltfEntity: RtGltfEntity,
@@ -73,6 +74,14 @@ internal constructor(
              */
             @JvmField public val PAUSED: AnimationState = AnimationState(3)
         }
+
+        override fun toString(): String =
+            when (this) {
+                PLAYING -> "PLAYING"
+                STOPPED -> "STOPPED"
+                PAUSED -> "PAUSED"
+                else -> "UNKNOWN ($value)"
+            }
     }
 
     /**

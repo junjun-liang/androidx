@@ -24,11 +24,12 @@ import android.os.SystemClock
 import android.util.SparseArray
 import android.view.MotionEvent
 import androidx.pdf.annotation.AnnotationsView.PageAnnotationsData
-import androidx.pdf.annotation.models.HighlightAnnotation
-import androidx.pdf.annotation.models.PathPdfObject
-import androidx.pdf.annotation.models.PathPdfObject.PathInput
-import androidx.pdf.annotation.models.PdfAnnotation
-import androidx.pdf.annotation.models.StampAnnotation
+import androidx.pdf.annotation.content.HighlightAnnotation
+import androidx.pdf.annotation.content.KeyedPdfAnnotation
+import androidx.pdf.annotation.content.PathPdfObject
+import androidx.pdf.annotation.content.PathPdfObject.PathInput
+import androidx.pdf.annotation.content.PdfAnnotation
+import androidx.pdf.annotation.content.StampAnnotation
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
@@ -44,12 +45,15 @@ class AnnotationsLocatorTest {
 
     private lateinit var annotationsLocator: AnnotationsLocator
     private lateinit var context: Context
-    private lateinit var pageInfoProvider: FakePageInfoProvider
+    private lateinit var pageInfoProvider: PageInfoProvider
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        pageInfoProvider = FakePageInfoProvider()
+        pageInfoProvider =
+            PageInfoProvider().apply {
+                setPageBounds(SparseArray<RectF>().apply { put(0, RectF(0f, 0f, 500f, 500f)) })
+            }
         annotationsLocator = AnnotationsLocator(context, pageInfoProvider)
     }
 

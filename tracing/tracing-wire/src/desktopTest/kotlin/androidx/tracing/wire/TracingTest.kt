@@ -29,6 +29,7 @@ import androidx.tracing.wire.protos.MutableTracePacket
 import androidx.tracing.wire.protos.MutableTrackDescriptor
 import androidx.tracing.wire.protos.MutableTrackEvent
 import kotlin.concurrent.thread
+import kotlin.test.BeforeTest
 import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -46,7 +47,6 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import okio.blackholeSink
 import okio.buffer
-import org.junit.Before
 
 class TestSink : AbstractTraceSink() {
     internal val packets = mutableListOf<MutableTracePacket>()
@@ -106,7 +106,7 @@ class TracingTest {
     lateinit var driver: TraceDriver
     lateinit var tracer: Tracer
 
-    @Before
+    @BeforeTest
     internal fun setUp() {
         sink.packets.clear()
         driver = TraceDriver(sink = sink, isGloballyEnabled = true)
@@ -344,9 +344,11 @@ class TracingTest {
     }
 
     @Test
+    @OptIn(ExperimentalContextPropagation::class)
     internal fun testInstantTrackEvents() {
         driver.use {
-            tracer.instant(category = "category", name = "name") {
+            val token = tracer.tokenForManualPropagation()
+            tracer.instant(category = "category", name = "name", token = token) {
                 addMetadataEntry("key", "value")
             }
         }
@@ -356,6 +358,9 @@ class TracingTest {
                 packet.track_event?.type == MutableTrackEvent.Type.TYPE_INSTANT
             }
         assertNotNull(packet) { "Cannot find a track event of TYPE_INSTANT" }
+        val flowIds = packet.track_event?.flow_ids
+        assertNotNull(flowIds) { "Expected flow ids in the track event " }
+        assertTrue(flowIds.isNotEmpty())
     }
 
     @Test

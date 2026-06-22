@@ -42,13 +42,21 @@ public abstract class AbstractTraceDriver : AutoCloseable {
     public abstract override fun close()
 
     /**
-     * Provide the instance of [AbstractTraceDriver] that can be used for in-process-tracing.
+     * Provides the instance of [AbstractTraceDriver] that can be used for in-process-tracing.
      *
      * On Android, The `android.app.Application` subtype should implement this, to provide a
      * canonical process wide [AbstractTraceDriver].
+     *
+     * When using `androidx.tracing:tracing-wire`,
+     * `androidx.tracing.profiler.ConnectedProfilerTracingInitializer` discovers the
+     * [AbstractTraceDriver.Factory], and constructs the instance. It then registers a global
+     * [Tracer] by calling [Tracer.setGlobalTracer].
+     *
+     * Otherwise, construct [AbstractTraceDriver] during startup and register it via
+     * [Tracer.setGlobalTracer] so other components can discover and use it.
      */
-    public interface Factory<out T : AbstractTraceDriver> {
+    public interface Factory {
         /** @return The [AbstractTraceDriver] instance that can be used for in-process tracing. */
-        public fun create(): T
+        public fun create(): AbstractTraceDriver
     }
 }

@@ -73,6 +73,7 @@ private constructor(rtGltfEntity: RtGltfEntity, entityRegistry: EntityRegistry) 
         }
 
     @delegate:RequiresApi(Build.VERSION_CODES.O)
+    @OptIn(ExperimentalGltfAnimationApi::class)
     private val _animations: List<GltfAnimation> by lazy {
         // The unique identifier of an animation is their index so we first get the
         // count of the nodes in the model from the native side.
@@ -109,13 +110,13 @@ private constructor(rtGltfEntity: RtGltfEntity, entityRegistry: EntityRegistry) 
      * order of elements in this list is guaranteed to match the order of animations in the glTF
      * file's `animations` array.
      */
-    @get:RequiresApi(Build.VERSION_CODES.O)
-    public val animations: List<GltfAnimation>
-        @MainThread
-        get() {
-            checkNotDisposed()
-            return _animations
-        }
+    @MainThread
+    @RequiresApi(Build.VERSION_CODES.O)
+    @ExperimentalGltfAnimationApi
+    public fun getAnimations(): List<GltfAnimation> {
+        checkNotDisposed()
+        return _animations
+    }
 
     /**
      * Retrieves the axis-aligned bounding box (AABB) of an instanced glTF model in meters in the
@@ -140,7 +141,6 @@ private constructor(rtGltfEntity: RtGltfEntity, entityRegistry: EntityRegistry) 
      */
     // TODO - b/501059605: Make the property public and remove this getter.
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-    @ExperimentalGltfComposeMethod
     public fun getGltfModelBoundingBox(): BoundingBox = gltfModelBoundingBox
 
     public companion object {
@@ -179,8 +179,11 @@ private constructor(rtGltfEntity: RtGltfEntity, entityRegistry: EntityRegistry) 
          * @param session [Session] to create the [GltfModel] in.
          * @param model The [GltfModel] this [Entity] is referencing.
          * @param pose The initial [Pose] of the [Entity]. The default value is [Pose.Identity].
-         * @param parent Parent entity. If `null`, the entity is created but not attached to the
-         *   scene graph and will not be visible until a parent is set. The default value is `null`.
+         * @param parent Parent entity. Defaults to `null`. If `null`, the entity is created but not
+         *   attached to the scene graph, meaning it will be invisible. If a parent entity (e.g.,
+         *   [ActivitySpace] or any other [Entity] already present in the scene) is assigned later,
+         *   the entity will become visible (provided it is enabled). This allows for [Entity]
+         *   pre-configuration before making it visible.
          */
         @MainThread
         @JvmOverloads
@@ -201,12 +204,3 @@ private constructor(rtGltfEntity: RtGltfEntity, entityRegistry: EntityRegistry) 
             )
     }
 }
-
-// Annotation for Gltf-specific restricted LIBRARY_GROUP_PREFIX APIs that have not been finalized.
-// The annotation itself is also restricted, to match the methods being annotated.
-@RequiresOptIn(
-    "This API is experimental and used exclusively by XR Compose. It is not supported for general use. (b/501059605)"
-)
-@Retention(AnnotationRetention.BINARY)
-@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-public annotation class ExperimentalGltfComposeMethod

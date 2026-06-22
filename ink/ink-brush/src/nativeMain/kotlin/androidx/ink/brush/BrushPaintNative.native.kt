@@ -27,20 +27,28 @@ import androidx.ink.nativeloader.cinterop.BrushPaintNative_isCompatibleWithMeshF
 import androidx.ink.nativeloader.cinterop.BrushPaintNative_newCopyOfColorFunction
 import androidx.ink.nativeloader.cinterop.BrushPaintNative_newCopyOfTextureLayer
 import androidx.ink.nativeloader.cinterop.ColorFunctionNative_computeReplaceColorLong
+import androidx.ink.nativeloader.cinterop.ColorFunctionNative_computeTransformedColorLong
+import androidx.ink.nativeloader.cinterop.ColorFunctionNative_createHueOffset
+import androidx.ink.nativeloader.cinterop.ColorFunctionNative_createLuminosityOffset
 import androidx.ink.nativeloader.cinterop.ColorFunctionNative_createOpacityMultiplier
 import androidx.ink.nativeloader.cinterop.ColorFunctionNative_createReplaceColor
+import androidx.ink.nativeloader.cinterop.ColorFunctionNative_createSaturationMultiplier
 import androidx.ink.nativeloader.cinterop.ColorFunctionNative_free
+import androidx.ink.nativeloader.cinterop.ColorFunctionNative_getHueOffsetDegrees
+import androidx.ink.nativeloader.cinterop.ColorFunctionNative_getLuminosityOffset
 import androidx.ink.nativeloader.cinterop.ColorFunctionNative_getOpacityMultiplier
+import androidx.ink.nativeloader.cinterop.ColorFunctionNative_getSaturationMultiplier
 import androidx.ink.nativeloader.cinterop.StampingTextureNative_create
 import androidx.ink.nativeloader.cinterop.StampingTextureNative_getAnimationColumns
 import androidx.ink.nativeloader.cinterop.StampingTextureNative_getAnimationDurationMillis
 import androidx.ink.nativeloader.cinterop.StampingTextureNative_getAnimationFrames
 import androidx.ink.nativeloader.cinterop.StampingTextureNative_getAnimationRows
+import androidx.ink.nativeloader.cinterop.StampingTextureNative_getClientTextureId
 import androidx.ink.nativeloader.cinterop.TextureLayerNative_free
 import androidx.ink.nativeloader.cinterop.TextureLayerNative_getBlendModeInt
-import androidx.ink.nativeloader.cinterop.TextureLayerNative_getClientTextureId
 import androidx.ink.nativeloader.cinterop.TextureLayerNative_getMappingInt
 import androidx.ink.nativeloader.cinterop.TilingTextureNative_create
+import androidx.ink.nativeloader.cinterop.TilingTextureNative_getClientTextureId
 import androidx.ink.nativeloader.cinterop.TilingTextureNative_getOffsetX
 import androidx.ink.nativeloader.cinterop.TilingTextureNative_getOffsetY
 import androidx.ink.nativeloader.cinterop.TilingTextureNative_getOriginInt
@@ -112,9 +120,6 @@ actual internal object BrushPaintNative {
 actual internal object TextureLayerNative {
     actual fun free(nativePointer: Long) = TextureLayerNative_free(nativePointer)
 
-    actual fun getClientTextureId(nativePointer: Long): String =
-        TextureLayerNative_getClientTextureId(nativePointer)!!.toKString()
-
     actual fun getMappingInt(nativePointer: Long): Int =
         TextureLayerNative_getMappingInt(nativePointer)
 
@@ -152,6 +157,9 @@ actual internal object TilingTextureNative {
             blendMode,
             throwForNonOkStatusCallback,
         )
+
+    actual fun getClientTextureId(nativePointer: Long): String =
+        TilingTextureNative_getClientTextureId(nativePointer)!!.toKString()
 
     actual fun getSizeX(nativePointer: Long): Float = TilingTextureNative_getSizeX(nativePointer)
 
@@ -200,6 +208,9 @@ actual internal object StampingTextureNative {
             throwForNonOkStatusCallback,
         )
 
+    actual fun getClientTextureId(nativePointer: Long): String =
+        StampingTextureNative_getClientTextureId(nativePointer)!!.toKString()
+
     actual fun getAnimationFrames(nativePointer: Long): Int =
         StampingTextureNative_getAnimationFrames(nativePointer)
 
@@ -219,6 +230,27 @@ actual internal object ColorFunctionNative {
         ColorFunctionNative_createOpacityMultiplier(
             jni_env_pass_through = null,
             multiplier,
+            throwForNonOkStatusCallback,
+        )
+
+    actual fun createHueOffset(offsetDegrees: Float): Long =
+        ColorFunctionNative_createHueOffset(
+            jni_env_pass_through = null,
+            offsetDegrees,
+            throwForNonOkStatusCallback,
+        )
+
+    actual fun createSaturationMultiplier(multiplier: Float): Long =
+        ColorFunctionNative_createSaturationMultiplier(
+            jni_env_pass_through = null,
+            multiplier,
+            throwForNonOkStatusCallback,
+        )
+
+    actual fun createLuminosityOffset(offset: Float): Long =
+        ColorFunctionNative_createLuminosityOffset(
+            jni_env_pass_through = null,
+            offset,
             throwForNonOkStatusCallback,
         )
 
@@ -244,10 +276,38 @@ actual internal object ColorFunctionNative {
     actual fun getOpacityMultiplier(nativePointer: Long): Float =
         ColorFunctionNative_getOpacityMultiplier(nativePointer)
 
+    actual fun getHueOffsetDegrees(nativePointer: Long): Float =
+        ColorFunctionNative_getHueOffsetDegrees(nativePointer)
+
+    actual fun getSaturationMultiplier(nativePointer: Long): Float =
+        ColorFunctionNative_getSaturationMultiplier(nativePointer)
+
+    actual fun getLuminosityOffset(nativePointer: Long): Float =
+        ColorFunctionNative_getLuminosityOffset(nativePointer)
+
     actual fun computeReplaceColorLong(nativePointer: Long): Long =
         ColorFunctionNative_computeReplaceColorLong(
             jni_env_pass_through = null,
             nativePointer,
+            composeColorLongFromComponentsCallback,
+        )
+
+    actual fun computeTransformedColorLong(
+        nativePointer: Long,
+        colorRed: Float,
+        colorGreen: Float,
+        colorBlue: Float,
+        colorAlpha: Float,
+        colorSpace: Int,
+    ): Long =
+        ColorFunctionNative_computeTransformedColorLong(
+            jni_env_pass_through = null,
+            nativePointer,
+            colorRed,
+            colorGreen,
+            colorBlue,
+            colorAlpha,
+            colorSpace,
             composeColorLongFromComponentsCallback,
         )
 }

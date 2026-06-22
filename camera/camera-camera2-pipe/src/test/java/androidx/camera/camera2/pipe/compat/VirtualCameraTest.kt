@@ -37,11 +37,13 @@ import androidx.camera.camera2.pipe.testing.FakeCamera2DeviceCloser
 import androidx.camera.camera2.pipe.testing.FakeCamera2MetadataProvider
 import androidx.camera.camera2.pipe.testing.FakeCameraMetadata
 import androidx.camera.camera2.pipe.testing.FakeThreads
+import androidx.camera.camera2.pipe.testing.HighEndDeviceTemplate
 import androidx.camera.camera2.pipe.testing.RobolectricCameraPipeTestRunner
 import androidx.camera.camera2.pipe.testing.RobolectricCameras
 import androidx.camera.common.unwrapAs
 import com.google.common.truth.Truth.assertThat
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.asFlow
@@ -95,10 +97,10 @@ internal class VirtualCameraStateTest {
         assertThat(closedState.cameraErrorCode).isNull()
         assertThat(closedState.cameraException).isNull()
         assertThat(closedState.cameraRetryCount).isNull()
-        assertThat(closedState.cameraRetryDurationNs).isNull()
-        assertThat(closedState.cameraOpenDurationNs).isNull()
-        assertThat(closedState.cameraActiveDurationNs).isNull()
-        assertThat(closedState.cameraClosingDurationNs).isNull()
+        assertThat(closedState.cameraRetryDuration).isNull()
+        assertThat(closedState.cameraOpenDuration).isNull()
+        assertThat(closedState.cameraActiveDuration).isNull()
+        assertThat(closedState.cameraClosingDuration).isNull()
     }
 
     @Test
@@ -295,7 +297,8 @@ internal class AndroidCameraDeviceTest {
     private val testCamera = RobolectricCameras.open(cameraId)
     private val timeSource: TimeSource = SystemTimeSource()
     private val cameraDeviceCloser = FakeCamera2DeviceCloser()
-    private val fakeCameraMetadata = FakeCameraMetadata(cameraId = cameraId)
+    private val fakeCameraMetadata =
+        FakeCameraMetadata.fromTemplate(template = HighEndDeviceTemplate, cameraId = cameraId)
     private val fakeCamera2Quirks =
         Camera2Quirks(
             FakeCamera2MetadataProvider(mapOf(cameraId to fakeCameraMetadata)),
@@ -369,13 +372,13 @@ internal class AndroidCameraDeviceTest {
         assertThat(closedState.cameraClosedReason).isEqualTo(ClosedReason.CAMERA2_CLOSED)
         assertThat(closedState.cameraRetryCount).isEqualTo(0)
         assertThat(closedState.cameraException).isNull()
-        assertThat(closedState.cameraRetryDurationNs?.value).isAtLeast(1)
-        assertThat(closedState.cameraOpenDurationNs?.value).isAtLeast(1)
-        assertThat(closedState.cameraActiveDurationNs?.value).isAtLeast(1)
+        assertThat(closedState.cameraRetryDuration).isGreaterThan(Duration.ZERO)
+        assertThat(closedState.cameraOpenDuration).isGreaterThan(Duration.ZERO)
+        assertThat(closedState.cameraActiveDuration).isGreaterThan(Duration.ZERO)
 
         // Closing duration measures how long "close()" takes to invoke on the camera device.
         // However, shimming the clocks is difficult.
-        assertThat(closedState.cameraClosingDurationNs).isNotNull()
+        assertThat(closedState.cameraClosingDuration).isNotNull()
         verify(systemCallbacks, times(1)).onCameraSystemStarting()
         verify(systemCallbacks, times(1)).onCameraSystemStopped()
     }

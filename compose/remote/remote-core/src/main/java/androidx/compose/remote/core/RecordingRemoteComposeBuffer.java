@@ -996,7 +996,7 @@ public class RecordingRemoteComposeBuffer extends RemoteComposeBuffer {
         float a = (color >> 24 & 0xff) / 255.0f;
         addOperation(
                 new BorderModifierOperation(
-                        0, 0, 0, 0, borderWidth, borderRoundedCorner, r, g, b, a, shape));
+                        0, 0, 1, 0, borderWidth, borderRoundedCorner, r, g, b, a, shape));
     }
 
     @Override
@@ -1560,7 +1560,8 @@ public class RecordingRemoteComposeBuffer extends RemoteComposeBuffer {
 
     @Override
     public void setVersion(int documentApiLevel, int profiles) {
-        throw new UnsupportedOperationException("setVersion is not supported");
+        mApiLevel = documentApiLevel;
+        mProfileMask = profiles;
     }
 
     @Override
@@ -1568,7 +1569,8 @@ public class RecordingRemoteComposeBuffer extends RemoteComposeBuffer {
             int documentApiLevel,
             int operationsProfiles,
             @NonNull Set<Integer> supportedOperations) {
-        throw new UnsupportedOperationException("setVersion is not supported");
+        mApiLevel = documentApiLevel;
+        mProfileMask = operationsProfiles;
     }
 
     @Override
@@ -1895,6 +1897,16 @@ public class RecordingRemoteComposeBuffer extends RemoteComposeBuffer {
 
         @Override
         public void hapticEffect(int type) {
+            throw new UnsupportedOperationException("Not yet implemented");
+        }
+
+        @Override
+        public void loadSound(int soundId, byte @NonNull [] data) {
+            throw new UnsupportedOperationException("Not yet implemented");
+        }
+
+        @Override
+        public void playSound(int soundId) {
             throw new UnsupportedOperationException("Not yet implemented");
         }
 

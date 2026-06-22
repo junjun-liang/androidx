@@ -65,8 +65,10 @@ import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.ButtonGroup
 import androidx.wear.compose.material3.Card
+import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.RevealDirection
@@ -128,6 +130,60 @@ fun SwipeToRevealBothDirectionsNoPartialReveal() {
                     onClick = {},
                 ) {
                     Text("This Button has only one action", modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SwipeToRevealWithCustomActionContentSpacing() {
+    ScalingLazyDemo {
+        item {
+            SwipeToReveal(
+                primaryAction = {
+                    PrimaryActionButton(
+                        onClick = { /* This block is called when the primary action is executed. */
+                        },
+                        icon = { Icon(Icons.Outlined.Delete, contentDescription = "Delete") },
+                        text = { Text("Delete") },
+                    )
+                },
+                onSwipePrimaryAction = { /* This block is called when the full swipe gesture is performed. */
+                },
+                undoPrimaryAction = {
+                    UndoActionButton(
+                        onClick = { /* This block is called when the undo primary action is executed. */
+                        },
+                        text = { Text("Undo Delete") },
+                    )
+                },
+                secondaryAction = {
+                    SecondaryActionButton(
+                        onClick = { /* This block is called when the secondary action is executed. */
+                        },
+                        icon = { Icon(Icons.Outlined.MoreVert, contentDescription = "More") },
+                    )
+                },
+                revealDirection = Bidirectional,
+                hasPartiallyRevealedState = true,
+                actionContentSpacing = 12.dp,
+            ) {
+                Button(
+                    modifier =
+                        Modifier.fillMaxWidth().semantics {
+                            // Use custom actions to make the primary action accessible
+                            customActions =
+                                listOf(
+                                    CustomAccessibilityAction("Delete") {
+                                        /* Add the primary action click handler here */
+                                        true
+                                    }
+                                )
+                        },
+                    onClick = {},
+                ) {
+                    Text("Custom Action Content Spacing", modifier = Modifier.fillMaxSize())
                 }
             }
         }
@@ -811,7 +867,10 @@ fun SwipeToRevealWithTransformingLazyColumnDemo() {
                             // Is needed to disable clipping.
                             compositingStrategy = CompositingStrategy.ModulateAlpha
                             clip = false
-                        },
+                        }
+                        .minimumVerticalContentPadding(
+                            ButtonDefaults.minimumVerticalListContentPadding
+                        ),
             ) {
                 Button(
                     {},
@@ -892,7 +951,10 @@ fun SwipeToRevealTwoActionsWithTransformingLazyColumnDemo(
                             // Is needed to disable clipping.
                             compositingStrategy = CompositingStrategy.ModulateAlpha
                             clip = false
-                        },
+                        }
+                        .minimumVerticalContentPadding(
+                            ButtonDefaults.minimumVerticalListContentPadding
+                        ),
             ) {
                 Button(
                     {},
@@ -1021,7 +1083,10 @@ fun SwipeToRevealCustomDragDemo() {
                             // Is needed to disable clipping.
                             compositingStrategy = CompositingStrategy.ModulateAlpha
                             clip = false
-                        },
+                        }
+                        .minimumVerticalContentPadding(
+                            ButtonDefaults.minimumVerticalListContentPadding
+                        ),
             ) {
                 Button(
                     {},
@@ -1128,7 +1193,10 @@ fun SwipeToRevealIconOnlyWithTransformingLazyColumnDemo() {
                             // Is needed to disable clipping.
                             compositingStrategy = CompositingStrategy.ModulateAlpha
                             clip = false
-                        },
+                        }
+                        .minimumVerticalContentPadding(
+                            CardDefaults.minimumVerticalListContentPadding
+                        ),
                 revealState = revealState,
             ) {
                 TitleCard(
@@ -1237,7 +1305,10 @@ fun SwipeToRevealWithTransformingLazyColumnExpansionAndDeletionDemo() {
                             compositingStrategy = CompositingStrategy.ModulateAlpha
                             clip = false
                         }
-                        .animateItem(),
+                        .animateItem()
+                        .minimumVerticalContentPadding(
+                            CardDefaults.minimumVerticalListContentPadding
+                        ),
                 revealState = revealState,
             ) {
                 TitleCard(

@@ -29,6 +29,7 @@ import androidx.compose.remote.core.documentation.DocumentationBuilder;
 import androidx.compose.remote.core.operations.Header;
 import androidx.compose.remote.core.operations.layout.animation.RootAnimateMeasure;
 import androidx.compose.remote.core.operations.layout.measure.ComponentMeasure;
+import androidx.compose.remote.core.operations.layout.measure.ComponentMeasurePool;
 import androidx.compose.remote.core.operations.layout.measure.Measurable;
 import androidx.compose.remote.core.operations.layout.measure.MeasurePass;
 import androidx.compose.remote.core.operations.layout.modifiers.ComponentModifiers;
@@ -49,6 +50,7 @@ public class RootLayoutComponent extends Component {
     private boolean mHasTouchListeners = false;
     protected float mLastReportedOriginX = Float.NaN;
     protected float mLastReportedOriginY = Float.NaN;
+    private final MeasurePass mMeasurePass = new MeasurePass();
 
     public RootLayoutComponent(
             int componentId,
@@ -160,8 +162,9 @@ public class RootLayoutComponent extends Component {
         context.mViewportWidth = newWidth;
         context.mViewportHeight = newHeight;
 
-        // TODO: reuse MeasurePass
-        MeasurePass measurePass = new MeasurePass();
+        mMeasurePass.setContext(context);
+        mMeasurePass.clear();
+        MeasurePass measurePass = mMeasurePass;
         ComponentMeasure self = measurePass.get(this);
         self.setX(0f);
         self.setY(0f);
@@ -182,6 +185,7 @@ public class RootLayoutComponent extends Component {
         self.setH(newHeight);
 
         layout(context, measurePass);
+        mMeasurePass.setContext(null);
         if (context.isLayoutDebug()) {
             DebugLog.display();
         }
@@ -201,8 +205,9 @@ public class RootLayoutComponent extends Component {
         context.mViewportWidth = newWidth;
         context.mViewportHeight = newHeight;
 
-        // TODO: reuse MeasurePass
-        MeasurePass measurePass = new MeasurePass();
+        mMeasurePass.setContext(context);
+        mMeasurePass.clear();
+        MeasurePass measurePass = mMeasurePass;
         ComponentMeasure self = measurePass.get(this);
         self.setX(0f);
         self.setY(0f);
@@ -236,6 +241,7 @@ public class RootLayoutComponent extends Component {
         self.setH(mHeight);
 
         layout(context, measurePass);
+        mMeasurePass.setContext(null);
     }
 
     @Override
@@ -252,10 +258,11 @@ public class RootLayoutComponent extends Component {
                 && mAnimationSpec.isAnimationEnabled()
                 && m.getAllowsAnimation()) {
             if (mAnimateMeasure == null) {
+                ComponentMeasurePool pool = context.getComponentMeasurePool();
                 ComponentMeasure origin =
-                        new ComponentMeasure(mComponentId, mX, mY, mWidth, mHeight, mVisibility);
+                        pool.obtain(mComponentId, mX, mY, mWidth, mHeight, mVisibility);
                 ComponentMeasure target =
-                        new ComponentMeasure(
+                        pool.obtain(
                                 mComponentId,
                                 m.getX(),
                                 m.getY(),
@@ -291,6 +298,8 @@ public class RootLayoutComponent extends Component {
                 } else {
                     mLastReportedOriginX = targetOriginX;
                     mLastReportedOriginY = targetOriginY;
+                    pool.recycle(origin);
+                    pool.recycle(target);
                 }
             }
         }

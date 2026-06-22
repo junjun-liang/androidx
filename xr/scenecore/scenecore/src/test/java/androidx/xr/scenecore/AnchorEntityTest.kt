@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@file:Suppress("DEPRECATION")
 
 package androidx.xr.scenecore
 
@@ -21,7 +22,7 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
-import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.xr.arcore.Anchor
 import androidx.xr.arcore.AnchorCreateSuccess
@@ -34,9 +35,8 @@ import androidx.xr.runtime.math.FloatSize2d
 import androidx.xr.runtime.math.Pose
 import androidx.xr.runtime.math.Quaternion
 import androidx.xr.runtime.math.Vector3
-import androidx.xr.scenecore.testing.AnchorEntityTester
+import androidx.xr.scenecore.testing.FakeAnchorEntity
 import androidx.xr.scenecore.testing.MemoryUtils
-import androidx.xr.scenecore.testing.SceneCoreTestRule
 import com.google.common.truth.Truth.assertThat
 import com.google.common.util.concurrent.MoreExecutors.directExecutor
 import java.lang.ref.WeakReference
@@ -50,6 +50,7 @@ import kotlin.time.toJavaDuration
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -57,7 +58,6 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertThrows
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -65,10 +65,10 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 
 @RunWith(AndroidJUnit4::class)
+@Suppress("Deprecation")
 class AnchorEntityTest {
-
-    @Rule @JvmField val scenecoreTestRule = SceneCoreTestRule()
-
+    private val fakeAnchorEntity = FakeAnchorEntity()
+    private lateinit var entityRegistry: EntityRegistry
     private lateinit var session: Session
     private lateinit var anchor: Anchor
     // TODO: b/494308962 Remove references to arcore-testing Fakes
@@ -85,7 +85,7 @@ class AnchorEntityTest {
     @Before
     @Suppress("DEPRECATION")
     // TODO: b/494308962 Remove references to arcore-testing Fakes
-    fun setup() {
+    fun setup(): Unit = runBlocking {
         testDispatcher = StandardTestDispatcher()
         activityController = Robolectric.buildActivity(ComponentActivity::class.java)
         activity = activityController.get()
@@ -101,10 +101,8 @@ class AnchorEntityTest {
 
     @After
     fun tearDown() {
-        if (::anchor.isInitialized) {
-            anchor.runtimeAnchor.detach()
-        }
-        if (::activityController.isInitialized) {
+        anchor.runtimeAnchor.detach()
+        if (activity.lifecycle.currentState != Lifecycle.State.DESTROYED) {
             activityController.destroy()
         }
     }
@@ -164,7 +162,7 @@ class AnchorEntityTest {
     @Suppress("DEPRECATION")
     // TODO: b/494308962 Remove references to arcore-testing Fakes
     fun createViaSemantic_withinTimeout_returnAnchoredEntity() {
-        runTest(testDispatcher) {
+        return runTest(testDispatcher) {
             activityController.create().start().resume()
             val plane =
                 androidx.xr.arcore.testing.FakeRuntimePlane(
@@ -192,7 +190,7 @@ class AnchorEntityTest {
     @Suppress("DEPRECATION")
     // TODO: b/494308962 Remove references to arcore-testing Fakes
     fun createViaSemantic_twice_doesNotReanchor() {
-        runTest(testDispatcher) {
+        return runTest(testDispatcher) {
             activityController.create().start().resume()
             val plane1 =
                 androidx.xr.arcore.testing.FakeRuntimePlane(
@@ -237,7 +235,7 @@ class AnchorEntityTest {
     @Suppress("DEPRECATION")
     // TODO: b/494308962 Remove references to arcore-testing Fakes
     fun createViaSemantic_pastTimeout_returnsTimedOutAnchorEntity() {
-        runTest(testDispatcher) {
+        return runTest(testDispatcher) {
             activityController.create().start().resume()
             val plane =
                 androidx.xr.arcore.testing.FakeRuntimePlane(
@@ -270,8 +268,9 @@ class AnchorEntityTest {
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     @Suppress("DEPRECATION")
+    // TODO: b/494308962 Remove references to arcore-testing Fakes
     fun createViaSemantic_zeroTimeout_keepsSearching() {
-        runTest(testDispatcher) {
+        return runTest(testDispatcher) {
             val anchorAttempts = 100
             activityController.create().start().resume()
             val anchorEntity =
@@ -310,15 +309,15 @@ class AnchorEntityTest {
 
     @Test
     fun addOriginChangedListener_receivesOnOriginChangedListenerCallbacks() {
-        val anchorEntity = AnchorEntity.create(session, anchor)
-        val tester = scenecoreTestRule.createTester<AnchorEntityTester>(anchorEntity)
         var listenerCalled = false
+        val anchorEntity = AnchorEntity.create(fakeAnchorEntity, entityRegistry)
         anchorEntity.addOriginChangedListener(directExecutor()) { listenerCalled = true }
 
+        assertThat(fakeAnchorEntity.onOriginChangedListener).isNotNull()
         assertThat(listenerCalled).isFalse()
 
-        // Simulates a runtime callback via tester.
-        tester.triggerOnOriginChanged()
+        // Simulates a runtime callback.
+        fakeAnchorEntity.onOriginChanged()
 
         assertThat(listenerCalled).isTrue()
     }
@@ -416,23 +415,22 @@ class AnchorEntityTest {
 
     @Test
     fun disposeInternal_clearsListeners() {
-        val anchorEntity = AnchorEntity.create(session, anchor)
-        val tester = scenecoreTestRule.createTester<AnchorEntityTester>(anchorEntity)
-        var listenerCalledCount = 0
-        anchorEntity.addOriginChangedListener(directExecutor()) { listenerCalledCount++ }
+        val anchorEntity = AnchorEntity.create(fakeAnchorEntity, entityRegistry)
+
+        anchorEntity.addOriginChangedListener(directExecutor()) {}
+        anchorEntity.addOriginChangedListener(directExecutor()) {}
+
+        assertThat(fakeAnchorEntity.onOriginChangedListener).isNotNull()
 
         anchorEntity.disposeInternal()
-
-        // After dispose, triggering via tester should not increment the count.
-        tester.triggerOnOriginChanged()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertThat(listenerCalledCount).isEqualTo(0)
+        assertThat(fakeAnchorEntity.onOriginChangedListener).isNull()
     }
 
     @Test
     fun disposeInternal_callingTwiceDoesNotCrash() {
-        val anchorEntity = AnchorEntity.create(session, anchor)
+        val anchorEntity = AnchorEntity.create(fakeAnchorEntity, entityRegistry)
         anchorEntity.disposeInternal()
         anchorEntity.disposeInternal()
     }
@@ -440,8 +438,10 @@ class AnchorEntityTest {
     @Test
     fun garbageCollection_disposesEntity() {
         fun createAnchorEntity(): WeakReference<AnchorEntity> {
-            val localAnchorEntity = AnchorEntity.create(session, anchor)
-            return WeakReference(localAnchorEntity)
+            val localFakeAnchorEntity = FakeAnchorEntity()
+            val localEntityRegistry = EntityRegistry()
+            val anchorEntity = AnchorEntity.create(localFakeAnchorEntity, localEntityRegistry)
+            return WeakReference(anchorEntity)
         }
 
         val anchorEntityRef = createAnchorEntity()
@@ -450,18 +450,14 @@ class AnchorEntityTest {
         MemoryUtils.assertGarbageCollected(anchorEntityRef)
     }
 
-    private fun createSession(coroutineDispatcher: CoroutineDispatcher = testDispatcher) {
-        val result =
-            Session.create(
-                activity,
-                coroutineDispatcher,
-                lifecycleOwner = activity as LifecycleOwner,
-            )
+    private suspend fun createSession(coroutineDispatcher: CoroutineDispatcher = testDispatcher) {
+        val result = Session.create(activity, coroutineDispatcher)
         assertThat(result).isInstanceOf(SessionCreateSuccess::class.java)
         session = (result as SessionCreateSuccess).session
         session.configure(Config(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL))
         val anchorPose = Pose(Vector3(1.0f, 2.0f, 3.0f), Quaternion.Identity)
         anchor = (Anchor.create(session, anchorPose) as AnchorCreateSuccess).anchor
+        entityRegistry = session.scene.entityRegistry
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -470,5 +466,13 @@ class AnchorEntityTest {
         SystemClock.setCurrentTimeMillis(mCurrentTimeMillis)
         timeSource += duration
         delay(duration)
+    }
+
+    @Test
+    fun anchorEntityState_toString() {
+        assertThat(AnchorEntity.State.UNANCHORED.toString()).isEqualTo("UNANCHORED")
+        assertThat(AnchorEntity.State.ANCHORED.toString()).isEqualTo("ANCHORED")
+        assertThat(AnchorEntity.State.TIMED_OUT.toString()).isEqualTo("TIMED_OUT")
+        assertThat(AnchorEntity.State.ERROR.toString()).isEqualTo("ERROR")
     }
 }

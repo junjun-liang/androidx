@@ -26,12 +26,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.internal.DropdownMenuPositionProvider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
@@ -58,19 +56,15 @@ actual fun DropdownMenu(
     expandedState.targetState = expanded
 
     if (expandedState.currentState || expandedState.targetState) {
-        val transformOriginState = remember { mutableStateOf(TransformOrigin.Center) }
         val density = LocalDensity.current
         val popupPositionProvider =
             remember(offset, density) {
                 DropdownMenuPositionProvider(
-                    transformOriginState,
                     offset,
                     density,
                     horizontalMargin = 0,
                     dropdownMenuAnchorPosition = MenuAnchorPosition.Below,
-                ) { parentBounds, menuBounds ->
-                    transformOriginState.value = calculateTransformOrigin(parentBounds, menuBounds)
-                }
+                )
             }
 
         Popup(
@@ -80,7 +74,7 @@ actual fun DropdownMenu(
         ) {
             DropdownMenuContent(
                 expandedState = expandedState,
-                transformOriginState = transformOriginState,
+                transformOrigin = { popupPositionProvider.transformOrigin },
                 scrollState = scrollState,
                 shape = shape,
                 containerColor = containerColor,
@@ -92,29 +86,6 @@ actual fun DropdownMenu(
             )
         }
     }
-}
-
-@Deprecated("Maintained for binary compatibility.", level = DeprecationLevel.HIDDEN)
-@ExperimentalMaterial3ExpressiveApi
-@Composable
-actual fun DropdownMenuPopup(
-    expanded: Boolean,
-    onDismissRequest: () -> Unit,
-    modifier: Modifier,
-    offset: DpOffset,
-    properties: PopupProperties,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    DropdownMenuPopup(
-        expanded = expanded,
-        onDismissRequest = onDismissRequest,
-        modifier = modifier,
-        popupPositionProvider =
-            MenuDefaults.rememberDropdownMenuPopupPositionProvider(MenuAnchorPosition.Below),
-        offset = offset,
-        properties = properties,
-        content = content,
-    )
 }
 
 @Deprecated(
@@ -238,4 +209,5 @@ internal actual fun DropdownMenuPopupImpl(
     )
 }
 
-internal actual val DefaultMenuProperties = PopupProperties(focusable = true)
+@Deprecated("Maintained for binary compatibility.", level = DeprecationLevel.HIDDEN)
+internal actual val DefaultMenuProperties = MenuDefaults.DefaultMenuProperties

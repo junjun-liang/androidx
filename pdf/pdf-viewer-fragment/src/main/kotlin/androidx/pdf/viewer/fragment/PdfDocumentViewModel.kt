@@ -35,6 +35,8 @@ import androidx.pdf.PdfLoader
 import androidx.pdf.PdfPasswordException
 import androidx.pdf.SandboxedPdfLoader
 import androidx.pdf.models.FormEditInfo
+import androidx.pdf.ocr.OcrContextRepository
+import androidx.pdf.ocr.OcrProvider
 import androidx.pdf.search.SearchRepository
 import androidx.pdf.search.model.NoQuery
 import androidx.pdf.search.model.QueryResults
@@ -98,7 +100,7 @@ public open class PdfDocumentViewModel(
      * Exposes the UI state as a StateFlow to enable reactive consumption and ensure that consumers
      * always receive the latest state.
      */
-    internal val fragmentUiScreenState: StateFlow<PdfFragmentUiState>
+    public val fragmentUiScreenState: StateFlow<PdfFragmentUiState>
         get() = _fragmentUiScreenState.asStateFlow()
 
     private val _searchViewUiState = MutableStateFlow<SearchViewUiState>(SearchViewUiState.Closed)
@@ -141,6 +143,15 @@ public open class PdfDocumentViewModel(
         get() = state[IMMERSIVE_MODE_STATE_KEY] ?: false
 
     protected val formEditInfos: ArrayList<FormEditInfo> = ArrayList()
+
+    /** Provider for OCR-based search in images. */
+    internal var ocrProvider: OcrProvider? = null
+        set(value) {
+            field = value
+            if (::searchRepository.isInitialized) {
+                searchRepository.setOcrProvider(value)
+            }
+        }
 
     /** Holds business logic for search feature. */
     private lateinit var searchRepository: SearchRepository
@@ -429,7 +440,8 @@ public open class PdfDocumentViewModel(
                 resetFormEditsState()
             }
 
-            searchRepository = SearchRepository(document)
+            searchRepository =
+                SearchRepository(document, ocrProvider?.let { OcrContextRepository(document, it) })
 
             /** Successful load, move to [PdfFragmentUiState.DocumentLoaded] state. */
             _fragmentUiScreenState.update { PdfFragmentUiState.DocumentLoaded(document) }

@@ -27,8 +27,6 @@ class TrackingStateTest {
 
     @Test
     fun toRuntimeTrackingStateReturnsCorrectValue() {
-        assertThat(TrackingState.TRACKING_DEGRADED.toRuntimeTrackingState())
-            .isEqualTo(RTTrackingState.TRACKING_DEGRADED)
         assertThat(TrackingState.TRACKING.toRuntimeTrackingState())
             .isEqualTo(RTTrackingState.TRACKING)
         assertThat(TrackingState.PAUSED.toRuntimeTrackingState()).isEqualTo(RTTrackingState.PAUSED)
@@ -39,7 +37,7 @@ class TrackingStateTest {
     @Test
     fun toTrackingStateExtensionReturnsCorrectValue() {
         assertThat(RTTrackingState.TRACKING_DEGRADED.toTrackingState())
-            .isEqualTo(TrackingState.TRACKING_DEGRADED)
+            .isEqualTo(TrackingState.PAUSED)
         assertThat(RTTrackingState.TRACKING.toTrackingState()).isEqualTo(TrackingState.TRACKING)
         assertThat(RTTrackingState.PAUSED.toTrackingState()).isEqualTo(TrackingState.PAUSED)
         assertThat(RTTrackingState.STOPPED.toTrackingState()).isEqualTo(TrackingState.STOPPED)

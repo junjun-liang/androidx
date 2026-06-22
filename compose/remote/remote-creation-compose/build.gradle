@@ -34,11 +34,11 @@ androidx {
 
 android {
     namespace = "androidx.compose.remote.creation.compose"
-    compileSdk { version = release(37) }
+    compileSdk { version = release(35) }
     defaultConfig {
         minSdk { version = release(29) }
     }
-}
+    }
 
 dependencies {
     lintChecks(project(":compose:remote:remote-lint"))
@@ -66,6 +66,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(project(":compose:remote:remote-testing"))
+    testImplementation(project(":compose:remote:remote-core-testutils"))
+    testImplementation(project(":compose:remote:remote-player-view"))
     testImplementation(libs.testParameterInjector)
     testImplementation(libs.testCoreKtx)
     testImplementation(libs.testRules)

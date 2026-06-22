@@ -61,7 +61,7 @@ class MeshEntityTest {
 
     @RequiresApi(Build.VERSION_CODES.O)
     @Before
-    fun setUp() = runBlocking {
+    fun setUp(): Unit = runBlocking {
         activityController = Robolectric.buildActivity(ComponentActivity::class.java)
         activity = activityController.create().start().get()
         val result =
@@ -110,6 +110,7 @@ class MeshEntityTest {
         assertThat(entity.mesh).isEqualTo(customMesh)
         assertThat(entity.materials).containsExactly(material)
         assertThat(entity.getPose()).isEqualTo(Pose.Identity)
+        assertThat(entity.parent).isNull()
     }
 
     @Test

@@ -4557,7 +4557,7 @@ class CompositionTests {
     */
 
     @Test
-    fun testCompositionAndRecomposerDeadlock() {
+    fun testCompositionAndRecomposerDeadlock() =
         runTest(timeout = 10.seconds) {
             withGlobalSnapshotManager {
                 repeat(100) {
@@ -4594,7 +4594,6 @@ class CompositionTests {
                 }
             }
         }
-    }
 
     @Test
     fun earlyComposableUnitReturn() = compositionTest {
@@ -4948,6 +4947,24 @@ class CompositionTests {
         advance()
     }
 
+    @Test // b/516904513
+    fun derivedStateOfLeak() = compositionTest {
+        val state = mutableIntStateOf(10)
+        compose {
+            val derived by remember { derivedStateOf { state.intValue > 100 } }
+            state.intValue++
+            Text("$derived")
+            Wrap { Text("$derived") }
+        }
+
+        repeat(100) {
+            state.intValue++
+            advance(ignorePendingWork = true)
+        }
+
+        assertEquals(0, (composition as CompositionImpl).processedObservationCount)
+    }
+
     @Test // regression test for 339618126
     fun removeGroupAtEndOfGroup() = compositionTest {
         // Ensure the runtime handles aberrant code generation
@@ -5072,6 +5089,29 @@ class CompositionTests {
             Text("B")
             Text("Static")
         }
+    }
+
+    @Test
+    fun testImminentInvalidationForCurrentGroup() = compositionTest {
+        var newShowChild by mutableStateOf(true)
+        var compositions = 0
+
+        compose {
+            val showChild = remember { mutableStateOf(newShowChild) }
+            showChild.value = newShowChild
+            SkippableHidingText("Child", showChild)
+            Text("compositions = ${++compositions}")
+        }
+
+        validate {
+            Text("Child")
+            Text("compositions = 1")
+        }
+
+        newShowChild = false
+        assertEquals(1, advanceCount(), "Content should settle in one composition")
+
+        validate { Text("compositions = 2") }
     }
 }
 
@@ -5317,6 +5357,13 @@ private inline fun InlineSubcomposition(crossinline content: @Composable () -> U
 @Composable
 private operator fun <T> CompositionLocal<T>.getValue(thisRef: Any?, property: KProperty<*>) =
     current
+
+@Composable
+private fun SkippableHidingText(label: String, visible: State<Boolean>) {
+    if (visible.value) {
+        Text(label)
+    }
+}
 
 // for 274185312
 

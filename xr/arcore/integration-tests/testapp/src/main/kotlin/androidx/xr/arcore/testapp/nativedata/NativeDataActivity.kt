@@ -53,17 +53,17 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.xr.arcore.testapp.ui.theme.GoogleYellow
 import androidx.xr.compose.spatial.Subspace
-import androidx.xr.compose.subspace.ResizePolicy
 import androidx.xr.compose.subspace.SpatialPanel
 import androidx.xr.compose.subspace.layout.SubspaceModifier
+import androidx.xr.compose.subspace.layout.movable
+import androidx.xr.compose.subspace.layout.resizable
 import androidx.xr.compose.subspace.layout.size
-import androidx.xr.compose.subspace.layout.transformingMovable
 import androidx.xr.compose.unit.DpVolumeSize
 import androidx.xr.runtime.Session
-import androidx.xr.runtime.UnstableNativeResourceApi
 import androidx.xr.runtime.XrDevice
 import androidx.xr.runtime.getNativeInstanceData
 import androidx.xr.runtime.getNativeSessionData
+import kotlin.coroutines.coroutineContext
 
 class NativeDataActivity : ComponentActivity() {
 
@@ -79,7 +79,6 @@ class NativeDataActivity : ComponentActivity() {
     private var getNativeDataResult by mutableStateOf("Not started")
     private var getNativeDataPassed by mutableStateOf(false)
 
-    @OptIn(UnstableNativeResourceApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -90,8 +89,8 @@ class NativeDataActivity : ComponentActivity() {
                     SpatialPanel(
                         modifier =
                             SubspaceModifier.size(DpVolumeSize(640.dp, 480.dp, 0.dp))
-                                .transformingMovable(),
-                        resizePolicy = ResizePolicy(),
+                                .movable()
+                                .resizable()
                     ) {
                         TestResultsView()
                     }
@@ -239,9 +238,8 @@ class NativeDataActivity : ComponentActivity() {
         }
     }
 
-    @OptIn(UnstableNativeResourceApi::class)
     @Suppress("RestrictedApiAndroidX")
-    private fun runTests() {
+    private suspend fun runTests() {
         // Test 1: Invalid Extensions
         val invalidExtensions = listOf("XR_INVALID_EXTENSION_NAME")
         try {
@@ -269,7 +267,12 @@ class NativeDataActivity : ComponentActivity() {
         try {
             XrDevice.getCurrentDevice(this, extensionsToInject)
 
-            val result = Session.create(this, lifecycleOwner = customLifecycleOwner)
+            val result =
+                Session.create(
+                    this,
+                    coroutineContext = coroutineContext,
+                    lifecycleOwner = customLifecycleOwner,
+                )
             if (result is androidx.xr.runtime.SessionCreateSuccess) {
                 validExtensionInjectResult =
                     "Success: Injected extensions & created XR session successfully."

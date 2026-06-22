@@ -61,8 +61,14 @@ private constructor(@JvmField internal val value: Int, private val name: String)
          * Self overlap will be drawn in a way that discards the overlapping content. This can be
          * used to make the stroke appear as if it's drawn as a PDF page object or annotation, where
          * a stroke can be filled only with a solid color or textures using
-         * [BrushPaint.TextureLayer.MAPPING_TILING]. This is the default behavior for Android T and
-         * below when [ANY] is used, and can also be used on Android U and above if desired.
+         * [BrushPaint.TilingTexture]. This is the default behavior for Android T and below when
+         * [ANY] is used, and can also be used on Android U and above if desired.
+         *
+         * This is incompatible with [BrushBehavior]s which target opacity or color, and with
+         * [BrushPaint.StampingTexture]. This is because [SelfOverlap.DISCARD] forces usage of the
+         * path renderer, and the aforementioned features require the mesh renderer. In the case
+         * where both are specified on the same [BrushCoat], the effects of the [BrushBehavior] or
+         * [BrushPaint.StampingTexture] will not be rendered.
          */
         @JvmField public val DISCARD: SelfOverlap = SelfOverlap(2, "DISCARD")
     }

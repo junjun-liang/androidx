@@ -33,7 +33,6 @@ import androidx.xr.runtime.math.Vector3
 import androidx.xr.scenecore.scene
 import androidx.xr.scenecore.testing.FakeSceneRuntime
 import com.google.common.truth.Truth.assertThat
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import org.junit.Rule
 import org.junit.Test
@@ -65,49 +64,7 @@ class SpatialConfigurationTest {
     }
 
     @Test
-    fun requestFullSpaceMode_nonXr_throwsException() {
-        composeTestRule.activity.disableXr()
-
-        composeTestRule.setContent {
-            assertFailsWith<UnsupportedOperationException> {
-                @Suppress("DEPRECATION") LocalSpatialConfiguration.current.requestFullSpaceMode()
-            }
-        }
-    }
-
-    @Test
-    fun requestHomeSpaceMode_nonXr_throwsException() {
-        composeTestRule.activity.disableXr()
-
-        composeTestRule.setContent {
-            assertFailsWith<UnsupportedOperationException> {
-                @Suppress("DEPRECATION") LocalSpatialConfiguration.current.requestHomeSpaceMode()
-            }
-        }
-    }
-
-    @Test
-    fun requestModeChange_changesBounds() {
-        var configuration: SpatialConfiguration? = null
-
-        composeTestRule.setContent {
-            configuration = LocalSpatialConfiguration.current
-            if (configuration.bounds == DpVolumeSize(Dp.Infinity, Dp.Infinity, Dp.Infinity)) {
-                Text("Full")
-            } else {
-                Text("Home")
-            }
-        }
-
-        composeTestRule.onNodeWithText("Full").assertExists()
-        composeTestRule.runOnIdle { @Suppress("DEPRECATION") configuration?.requestHomeSpaceMode() }
-        composeTestRule.onNodeWithText("Home").assertExists()
-        composeTestRule.runOnIdle { @Suppress("DEPRECATION") configuration?.requestFullSpaceMode() }
-        composeTestRule.onNodeWithText("Full").assertExists()
-    }
-
-    @Test
-    fun hasXrSpatialFeature_fullSpaceMode_returnsTrue() {
+    fun hasXrSpatialFeature_fullSpace_returnsTrue() {
         composeTestRule.setContent {
             if (LocalSpatialConfiguration.current.hasXrSpatialFeature) {
                 Text(hasXrSpatialFeatureText)
@@ -118,8 +75,8 @@ class SpatialConfigurationTest {
     }
 
     @Test
-    fun hasXrSpatialFeature_homeSpaceMode_returnsTrue() {
-        composeTestRule.configureFakeSession().scene.requestHomeSpaceMode()
+    fun hasXrSpatialFeature_homeSpace_returnsTrue() {
+        composeTestRule.configureFakeSession().scene.requestHomeSpace()
 
         composeTestRule.setContent {
             if (LocalSpatialConfiguration.current.hasXrSpatialFeature) {
@@ -131,8 +88,8 @@ class SpatialConfigurationTest {
     }
 
     @Test
-    fun bounds_homeSpaceMode_isPositiveAndNotMax() {
-        composeTestRule.configureFakeSession().scene.requestHomeSpaceMode()
+    fun bounds_homeSpace_isPositiveAndNotMax() {
+        composeTestRule.configureFakeSession().scene.requestHomeSpace()
 
         var bounds: DpVolumeSize? = null
         composeTestRule.setContent { bounds = LocalSpatialConfiguration.current.bounds }
@@ -148,7 +105,7 @@ class SpatialConfigurationTest {
     }
 
     @Test
-    fun bounds_fullSpaceMode_isMax() {
+    fun bounds_fullSpace_isMax() {
         var bounds: DpVolumeSize? = null
         composeTestRule.setContent { bounds = LocalSpatialConfiguration.current.bounds }
         composeTestRule.waitForIdle()

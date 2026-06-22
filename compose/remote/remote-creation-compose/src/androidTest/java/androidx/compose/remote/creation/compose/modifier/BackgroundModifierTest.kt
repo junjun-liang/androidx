@@ -38,8 +38,8 @@ import androidx.compose.remote.creation.compose.state.rememberNamedRemoteColor
 import androidx.compose.remote.creation.compose.state.ri
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.remote.creation.compose.state.rsp
-import androidx.compose.remote.player.compose.test.utils.screenshot.rule.ComposableWrappers
-import androidx.compose.remote.player.compose.test.utils.screenshot.rule.RemoteScreenshotTestRule
+import androidx.compose.remote.player.compose.test.utils.ComposableWrappers
+import androidx.compose.remote.player.compose.test.utils.RemoteScreenshotTestRule
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -74,22 +74,22 @@ class BackgroundModifierTest {
     val hexDecimalFormat = DecimalFormat("0")
 
     fun RemoteInt.toHexDigit(): RemoteString {
-        return eq(15.ri)
+        return isEqualTo(15.ri)
             .select(
                 "F".rs,
-                eq(14.ri)
+                isEqualTo(14.ri)
                     .select(
                         "E".rs,
-                        eq(13.ri)
+                        isEqualTo(13.ri)
                             .select(
                                 "D".rs,
-                                eq(12.ri)
+                                isEqualTo(12.ri)
                                     .select(
                                         "C".rs,
-                                        eq(11.ri)
+                                        isEqualTo(11.ri)
                                             .select(
                                                 "B".rs,
-                                                eq(10.ri)
+                                                isEqualTo(10.ri)
                                                     .select(
                                                         "A".rs,
                                                         absoluteValue.toRemoteString(

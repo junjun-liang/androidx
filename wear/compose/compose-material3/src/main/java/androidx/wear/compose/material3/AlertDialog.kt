@@ -158,10 +158,7 @@ public fun AlertDialog(
         visible = visible,
         onDismissRequest = onDismissRequest,
         modifier =
-            Modifier.alertDialogGesture(
-                action = GestureAction.Dismiss,
-                onGesture = onDismissRequest,
-            ),
+            Modifier.oneHandedGesture(action = GestureAction.Dismiss, onGesture = onDismissRequest),
         properties = properties,
     ) {
         AlertDialogContent(
@@ -263,10 +260,7 @@ public fun AlertDialog(
         visible = visible,
         onDismissRequest = onDismissRequest,
         modifier =
-            Modifier.alertDialogGesture(
-                action = GestureAction.Dismiss,
-                onGesture = onDismissRequest,
-            ),
+            Modifier.oneHandedGesture(action = GestureAction.Dismiss, onGesture = onDismissRequest),
         properties = properties,
     ) {
         AlertDialogContent(
@@ -344,10 +338,7 @@ public fun AlertDialog(
         visible = visible,
         onDismissRequest = onDismissRequest,
         modifier =
-            Modifier.alertDialogGesture(
-                action = GestureAction.Dismiss,
-                onGesture = onDismissRequest,
-            ),
+            Modifier.oneHandedGesture(action = GestureAction.Dismiss, onGesture = onDismissRequest),
         properties = properties,
     ) {
         AlertDialogContent(
@@ -435,10 +426,7 @@ public fun AlertDialog(
         visible = visible,
         onDismissRequest = onDismissRequest,
         modifier =
-            Modifier.alertDialogGesture(
-                action = GestureAction.Dismiss,
-                onGesture = onDismissRequest,
-            ),
+            Modifier.oneHandedGesture(action = GestureAction.Dismiss, onGesture = onDismissRequest),
         properties = properties,
     ) {
         AlertDialogContent(
@@ -527,10 +515,7 @@ public fun AlertDialog(
         visible = visible,
         onDismissRequest = onDismissRequest,
         modifier =
-            Modifier.alertDialogGesture(
-                action = GestureAction.Dismiss,
-                onGesture = onDismissRequest,
-            ),
+            Modifier.oneHandedGesture(action = GestureAction.Dismiss, onGesture = onDismissRequest),
         properties = properties,
     ) {
         AlertDialogContent(
@@ -632,10 +617,7 @@ public fun AlertDialog(
         visible = visible,
         onDismissRequest = onDismissRequest,
         modifier =
-            Modifier.alertDialogGesture(
-                action = GestureAction.Dismiss,
-                onGesture = onDismissRequest,
-            ),
+            Modifier.oneHandedGesture(action = GestureAction.Dismiss, onGesture = onDismissRequest),
         properties = properties,
     ) {
         AlertDialogContent(
@@ -705,15 +687,14 @@ public fun AlertDialogContent(
 ) {
     val scrollableLayout: @Composable () -> Unit = {
         val state = rememberScalingLazyListState(initialCenterItemIndex = 0)
-        var scrollGestureIndicatorVisible by remember { mutableStateOf(false) }
+        val interactionSource = remember { MutableInteractionSource() }
         ScreenScaffold(
             scrollState = state,
             modifier = modifier,
             scrollIndicator = {
                 OneHandedGestureScrollIndicator(
-                    scrollGestureIndicatorVisible,
-                    onGestureIndicatorFinished = { scrollGestureIndicatorVisible = false },
-                    state,
+                    interactionSource = interactionSource,
+                    state = state,
                     modifier = Modifier.align(Alignment.CenterEnd),
                 )
             },
@@ -728,11 +709,11 @@ public fun AlertDialogContent(
                 autoCentering = null,
                 modifier =
                     Modifier.fillMaxSize()
-                        .alertDialogGesture(
+                        .oneHandedGesture(
                             action = GestureAction.Primary,
                             priority = GesturePriority.Scrollable,
+                            interactionSource = interactionSource,
                             onGesture = { OneHandedGestureDefaults.scrollDown(state) },
-                            onShowIndicator = { scrollGestureIndicatorVisible = true },
                         ),
             ) {
                 alertDialogCommonContent(icon = icon, title = title, text = text, content = content)
@@ -825,18 +806,17 @@ public fun AlertDialogContent(
         },
     content: (TransformingLazyColumnScope.() -> Unit)? = null,
 ) {
-    var scrollGestureIndicatorVisible by remember { mutableStateOf(false) }
     val scrollableLayout: @Composable () -> Unit = {
         val state = rememberTransformingLazyColumnState(initialAnchorItemIndex = 0)
+        val interactionSource = remember { MutableInteractionSource() }
         ScreenScaffold(
             scrollState = state,
             modifier = modifier,
             contentPadding = contentPadding,
             scrollIndicator = {
                 OneHandedGestureScrollIndicator(
-                    scrollGestureIndicatorVisible,
-                    onGestureIndicatorFinished = { scrollGestureIndicatorVisible = false },
-                    state,
+                    interactionSource = interactionSource,
+                    state = state,
                     modifier = Modifier.align(Alignment.CenterEnd),
                 )
             },
@@ -848,11 +828,11 @@ public fun AlertDialogContent(
                 verticalArrangement = verticalArrangement,
                 modifier =
                     Modifier.fillMaxSize()
-                        .alertDialogGesture(
+                        .oneHandedGesture(
                             action = GestureAction.Primary,
                             priority = GesturePriority.Scrollable,
+                            interactionSource = interactionSource,
                             onGesture = { OneHandedGestureDefaults.scrollDown(state) },
-                            onShowIndicator = { scrollGestureIndicatorVisible = true },
                         ),
             ) {
                 alertDialogCommonContent(
@@ -939,15 +919,14 @@ public fun AlertDialogContent(
 ) {
     val scrollableLayout: @Composable () -> Unit = {
         val state = rememberScalingLazyListState(initialCenterItemIndex = 0)
-        var scrollGestureIndicatorVisible by remember { mutableStateOf(false) }
+        val interactionSource = remember { MutableInteractionSource() }
         ScreenScaffold(
             scrollState = state,
             modifier = modifier,
             scrollIndicator = {
                 OneHandedGestureScrollIndicator(
-                    scrollGestureIndicatorVisible,
-                    onGestureIndicatorFinished = { scrollGestureIndicatorVisible = false },
-                    state,
+                    interactionSource = interactionSource,
+                    state = state,
                     modifier = Modifier.align(Alignment.CenterEnd),
                 )
             },
@@ -962,11 +941,11 @@ public fun AlertDialogContent(
                 autoCentering = null,
                 modifier =
                     Modifier.fillMaxSize()
-                        .alertDialogGesture(
+                        .oneHandedGesture(
                             action = GestureAction.Primary,
                             priority = GesturePriority.Scrollable,
+                            interactionSource = interactionSource,
                             onGesture = { OneHandedGestureDefaults.scrollDown(state) },
-                            onShowIndicator = { scrollGestureIndicatorVisible = true },
                         ),
             ) {
                 alertDialogCommonContent(icon = icon, title = title, text = text, content = content)
@@ -1044,17 +1023,16 @@ public fun AlertDialogContent(
     content: (TransformingLazyColumnScope.() -> Unit)? = null,
 ) {
     val scrollableLayout: @Composable () -> Unit = {
-        var scrollGestureIndicatorVisible by remember { mutableStateOf(false) }
         val state = rememberTransformingLazyColumnState(initialAnchorItemIndex = 0)
+        val interactionSource = remember { MutableInteractionSource() }
         ScreenScaffold(
             scrollState = state,
             modifier = modifier,
             contentPadding = contentPadding(true),
             scrollIndicator = {
                 OneHandedGestureScrollIndicator(
-                    scrollGestureIndicatorVisible,
-                    onGestureIndicatorFinished = { scrollGestureIndicatorVisible = false },
-                    state,
+                    interactionSource = interactionSource,
+                    state = state,
                     modifier = Modifier.align(Alignment.CenterEnd),
                 )
             },
@@ -1066,11 +1044,11 @@ public fun AlertDialogContent(
                 verticalArrangement = verticalArrangement,
                 modifier =
                     Modifier.fillMaxSize()
-                        .alertDialogGesture(
+                        .oneHandedGesture(
                             action = GestureAction.Primary,
                             priority = GesturePriority.Scrollable,
+                            interactionSource = interactionSource,
                             onGesture = { OneHandedGestureDefaults.scrollDown(state) },
-                            onShowIndicator = { scrollGestureIndicatorVisible = true },
                         ),
             ) {
                 alertDialogCommonContent(
@@ -1153,8 +1131,8 @@ public fun AlertDialogContent(
     // (unlike the confirm/dismiss and button-stack layouts) - so DynamicScrollableOrFixedLayout
     // is not needed.
     val state = rememberScalingLazyListState(initialCenterItemIndex = 0)
-    var scrollGestureIndicatorVisible by remember { mutableStateOf(false) }
     val noTextAndContent = text == null && content == null
+    val interactionSource = remember { MutableInteractionSource() }
     ScreenScaffold(
         scrollState = state,
         edgeButton = edgeButton,
@@ -1162,9 +1140,8 @@ public fun AlertDialogContent(
         contentPadding = contentPadding,
         scrollIndicator = {
             OneHandedGestureScrollIndicator(
-                scrollGestureIndicatorVisible,
-                onGestureIndicatorFinished = { scrollGestureIndicatorVisible = false },
-                state,
+                interactionSource = interactionSource,
+                state = state,
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
         },
@@ -1181,11 +1158,11 @@ public fun AlertDialogContent(
             autoCentering = null,
             modifier =
                 Modifier.fillMaxSize()
-                    .alertDialogGesture(
+                    .oneHandedGesture(
                         action = GestureAction.Primary,
                         priority = GesturePriority.Scrollable,
+                        interactionSource = interactionSource,
                         onGesture = { OneHandedGestureDefaults.scrollDown(state) },
-                        onShowIndicator = { scrollGestureIndicatorVisible = true },
                     ),
         ) {
             alertDialogCommonContent(icon = icon, title = title, text = text, content = content)
@@ -1257,9 +1234,9 @@ public fun AlertDialogContent(
     /*
        AlertDialog + EdgeButton layout does not differentiate between scrollable/fixed content (unlike the confirm/dismiss and button-stack layouts) - so DynamicScrollableOrFixedLayout is not needed.
     */
-    var scrollGestureIndicatorVisible by remember { mutableStateOf(false) }
     val state = rememberTransformingLazyColumnState(initialAnchorItemIndex = 0)
     val noTextAndContent = text == null && content == null
+    val interactionSource = remember { MutableInteractionSource() }
     ScreenScaffold(
         scrollState = state,
         modifier = modifier,
@@ -1267,9 +1244,8 @@ public fun AlertDialogContent(
         contentPadding = contentPadding,
         scrollIndicator = {
             OneHandedGestureScrollIndicator(
-                scrollGestureIndicatorVisible,
-                onGestureIndicatorFinished = { scrollGestureIndicatorVisible = false },
-                state,
+                interactionSource = interactionSource,
+                state = state,
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
         },
@@ -1284,11 +1260,11 @@ public fun AlertDialogContent(
             verticalArrangement = verticalArrangement,
             modifier =
                 Modifier.fillMaxSize()
-                    .alertDialogGesture(
+                    .oneHandedGesture(
                         action = GestureAction.Primary,
                         priority = GesturePriority.Scrollable,
+                        interactionSource = interactionSource,
                         onGesture = { OneHandedGestureDefaults.scrollDown(state) },
-                        onShowIndicator = { scrollGestureIndicatorVisible = true },
                     ),
         ) {
             alertDialogCommonContent(
@@ -1338,17 +1314,15 @@ public object AlertDialogDefaults {
         }
 
         val interactionSource = remember { MutableInteractionSource() }
-        var gestureIndicatorVisible by remember { mutableStateOf(false) }
 
         return EdgeButton(
             modifier =
                 modifier.onSizeChanged { size -> currentButtonSize = size } then
                     if (isButtonFullyVisible) {
-                        Modifier.alertDialogGesture(
+                        Modifier.oneHandedGesture(
                             action = GestureAction.Primary,
                             priority = GesturePriority.Clickable,
                             interactionSource = interactionSource,
-                            onShowIndicator = { gestureIndicatorVisible = true },
                             onGesture = onClick,
                         )
                     } else {
@@ -1360,8 +1334,7 @@ public object AlertDialogDefaults {
             buttonSize = buttonSize,
             content = {
                 OneHandedGestureIndicator(
-                    gestureIndicatorVisible,
-                    { gestureIndicatorVisible = false },
+                    interactionSource = interactionSource,
                     gestureIndicatorTint = colors.iconColor,
                 ) {
                     // wrap content() in a Row because EdgeButton's content parameter is as
@@ -1392,7 +1365,6 @@ public object AlertDialogDefaults {
         val confirmHeight = 54.dp
         val confirmShape = CircleShape
         val interactionSource = remember { MutableInteractionSource() }
-        var gestureIndicatorVisible by remember { mutableStateOf(false) }
         var buttonVisible by remember { mutableStateOf(false) }
         FilledIconButton(
             onClick = onClick,
@@ -1404,11 +1376,10 @@ public object AlertDialogDefaults {
                     .size(confirmWidth, confirmHeight)
                     .then(
                         if (buttonVisible) {
-                            Modifier.alertDialogGesture(
+                            Modifier.oneHandedGesture(
                                 action = GestureAction.Primary,
                                 interactionSource = interactionSource,
                                 priority = GesturePriority.Clickable,
-                                onShowIndicator = { gestureIndicatorVisible = true },
                                 onGesture = onClick,
                             )
                         } else {
@@ -1419,8 +1390,7 @@ public object AlertDialogDefaults {
             shapes = IconButtonDefaults.shapes(confirmShape),
         ) {
             OneHandedGestureIndicator(
-                gestureIndicatorVisible,
-                { gestureIndicatorVisible = false },
+                interactionSource = interactionSource,
                 modifier = Modifier.graphicsLayer { rotationZ = 45f },
             ) {
                 Row(
@@ -1928,26 +1898,6 @@ private fun TextMessage(modifier: Modifier = Modifier, content: @Composable () -
         )
     }
 }
-
-@OptIn(ExperimentalWearComposeMaterial3Api::class)
-@Composable
-private fun Modifier.alertDialogGesture(
-    action: GestureAction,
-    priority: GesturePriority = GesturePriority.Unspecified,
-    interactionSource: MutableInteractionSource? = null,
-    onShowIndicator: () -> Unit = {},
-    onGesture: suspend () -> Unit,
-): Modifier =
-    this then
-        if (WearComposeMaterial3Flags.isOneHandedGesturesInAlertDialogEnabled) {
-            Modifier.oneHandedGesture(
-                action = action,
-                priority = priority,
-                interactionSource = interactionSource,
-                onShowIndicator = onShowIndicator,
-                onGesture = onGesture,
-            )
-        } else Modifier
 
 internal val AlertIconBottomSpacing = 4.dp
 internal val AlertTextMessageTopSpacing = 4.dp

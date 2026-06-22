@@ -28,8 +28,10 @@ import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 import androidx.compose.remote.creation.compose.modifier.background
 import androidx.compose.remote.creation.compose.modifier.padding
 import androidx.compose.remote.creation.compose.modifier.size
-import androidx.compose.remote.creation.compose.painter.painterRemoteBitmap
+import androidx.compose.remote.creation.compose.painter.painterRemoteImageBitmap
+import androidx.compose.remote.player.core.platform.AndroidRemoteContext
 import androidx.compose.remote.player.core.state.RemoteDomains
+import androidx.compose.remote.testing.LimitsRule
 import androidx.compose.remote.testing.RemoteCaptureTestRule
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -53,6 +55,7 @@ import org.robolectric.annotation.Config
 class RemoteStateCreationTest {
 
     @get:Rule val remoteCaptureRule = RemoteCaptureTestRule()
+    @get:Rule val limitsRule = LimitsRule()
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
@@ -158,33 +161,39 @@ class RemoteStateCreationTest {
 
     @Test
     fun rememberNamedRemoteBitmap_FromUrl_isRendered() = runTest {
+        limitsRule.setEnableImageUrls(true)
+        limitsRule.setEnableImageFiles(true)
         val coreDoc =
             remoteCaptureRule.captureDocument(context) {
                 val namedBitmap =
-                    rememberNamedRemoteBitmap(
+                    rememberNamedRemoteImageBitmap(
                         name = "testBitmapUrl",
                         url = "android.resource://androidx.compose.remote.foundation/drawable/dummy",
                     )
                 RemoteBox(
                     modifier =
-                        RemoteModifier.size(100.rdp).background(painterRemoteBitmap(namedBitmap))
+                        RemoteModifier.size(100.rdp)
+                            .background(painterRemoteImageBitmap(namedBitmap))
                 )
             }
     }
 
     @Test
     fun rememberNamedRemoteBitmap_FromImageBitmap_isRendered() = runTest {
+        limitsRule.setEnableImageUrls(true)
+        limitsRule.setEnableImageFiles(true)
         val coreDoc =
             remoteCaptureRule.captureDocument(context) {
                 val namedBitmap =
-                    rememberNamedRemoteBitmap("testBitmapImage") {
+                    rememberNamedRemoteImageBitmap("testBitmapImage") {
                         Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)
                             .apply { eraseColor(android.graphics.Color.GREEN) }
                             .asImageBitmap()
                     }
                 RemoteBox(
                     modifier =
-                        RemoteModifier.size(100.rdp).background(painterRemoteBitmap(namedBitmap))
+                        RemoteModifier.size(100.rdp)
+                            .background(painterRemoteImageBitmap(namedBitmap))
                 )
             }
     }
@@ -320,5 +329,18 @@ class RemoteStateCreationTest {
             // This form provides a RemoteContext
             rememberRemoteFloatExpression { 1f.rf }.writeToDocument(state)
         }
+    }
+
+    @Test
+    fun creation_rememberRemote_withInt_doesNotCrash() = runTest {
+        val coreDoc =
+            remoteCaptureRule.captureDocument(context) {
+                val useLargeScroll = rememberMutableRemoteBoolean(true)
+                RemoteText(useLargeScroll.select("True".rs, "False".rs), color = Color.Black.rc)
+            }
+        val playbackContext = AndroidRemoteContext()
+        playbackContext.androidContext = context
+        coreDoc.initializeContext(playbackContext, null)
+        coreDoc.applyDataOperations(playbackContext)
     }
 }

@@ -17,11 +17,13 @@
 package androidx.benchmark.macro
 
 import android.os.Build.VERSION.SDK_INT
+import androidx.benchmark.DeviceInfo
 import androidx.benchmark.DeviceInfo.isEmulator
 import androidx.benchmark.inMemoryTrace
 import androidx.benchmark.junit4.PerfettoTraceRule
 import androidx.benchmark.perfetto.ExperimentalPerfettoCaptureApi
 import androidx.benchmark.perfetto.PerfettoHelper
+import androidx.benchmark.runSingleSessionServer
 import androidx.benchmark.traceprocessor.PerfettoTrace
 import androidx.benchmark.traceprocessor.TraceProcessor
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,6 +32,8 @@ import androidx.tracing.trace
 import kotlin.test.assertContains
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -46,6 +50,11 @@ import org.junit.runners.model.Statement
 @OptIn(ExperimentalPerfettoCaptureApi::class)
 @RunWith(AndroidJUnit4::class)
 class PerfettoTraceRuleTest {
+    @Before
+    fun checkDeviceSupport() {
+        assumeTrue(DeviceInfo.expectedToSupportTracingInTests)
+    }
+
     companion object {
         const val UNIQUE_SLICE_NAME = "PerfettoRuleTestUnique"
     }

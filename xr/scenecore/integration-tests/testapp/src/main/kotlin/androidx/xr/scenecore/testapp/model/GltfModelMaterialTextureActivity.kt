@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+@file:kotlin.OptIn(androidx.xr.scenecore.ExperimentalGltfAnimationApi::class)
+
 package androidx.xr.scenecore.testapp.model
 
 import android.annotation.SuppressLint
@@ -82,30 +84,36 @@ class GltfModelMaterialTextureActivity : AppCompatActivity() {
             insets
         }
 
-        session = SessionManager(this).createSession()
-        if (session == null) this.finish()
-        session!!.configure(Config(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL))
-        session?.scene?.keyEntity = session?.scene?.mainPanelEntity
-
-        findViewById<Toolbar>(R.id.gltf_model_topAppBar).also {
-            setSupportActionBar(it)
-            it.setNavigationOnClickListener { this@GltfModelMaterialTextureActivity.finish() }
-            it.setTitle(getString(R.string.cuj_gltf_model_material_texture_test))
-        }
-
-        findViewById<FloatingActionButton>(R.id.bottomCenterFab).also {
-            it.tooltipText = getString(R.string.fab_recreate_activity_tooltip)
-            it.setOnClickListener { ActivityCompat.recreate(this@GltfModelMaterialTextureActivity) }
-        }
-
-        findViewById<Button>(R.id.gltf_model_toggle_hsm_fsm).also { button ->
-            button.text = getString(R.string.switch_to_hsm_button_text)
-            button.setOnClickListener { button.text = toggleMode() }
-        }
-
         lifecycleScope.launch {
-            loadResources()
-            setupButtons()
+            session = SessionManager(this@GltfModelMaterialTextureActivity).createSession()
+            if (session == null) this@GltfModelMaterialTextureActivity.finish()
+            session!!.configure(
+                Config.Builder().setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL).build()
+            )
+            session?.scene?.keyEntity = session?.scene?.mainPanelEntity
+
+            findViewById<Toolbar>(R.id.gltf_model_topAppBar).also {
+                setSupportActionBar(it)
+                it.setNavigationOnClickListener { this@GltfModelMaterialTextureActivity.finish() }
+                it.setTitle(getString(R.string.cuj_gltf_model_material_texture_test))
+            }
+
+            findViewById<FloatingActionButton>(R.id.bottomCenterFab).also {
+                it.tooltipText = getString(R.string.fab_recreate_activity_tooltip)
+                it.setOnClickListener {
+                    ActivityCompat.recreate(this@GltfModelMaterialTextureActivity)
+                }
+            }
+
+            findViewById<Button>(R.id.gltf_model_toggle_hsm_fsm).also { button ->
+                button.text = getString(R.string.switch_to_hsm_button_text)
+                button.setOnClickListener { button.text = toggleMode() }
+            }
+
+            lifecycleScope.launch {
+                loadResources()
+                setupButtons()
+            }
         }
     }
 
@@ -237,7 +245,7 @@ class GltfModelMaterialTextureActivity : AppCompatActivity() {
         findViewById<Button>(R.id.gltf_model_button4_3).setOnClickListener {
             val entity = dragonModelEntity
             if (entity != null) {
-                val animation = entity.animations.find { it.name == ANIMATION_NAME }
+                val animation = entity.getAnimations().find { it.name == ANIMATION_NAME }
                 if (animation?.animationState == GltfAnimation.AnimationState.PLAYING) {
                     animation.stop()
                 } else {
@@ -309,13 +317,13 @@ class GltfModelMaterialTextureActivity : AppCompatActivity() {
     private fun toggleMode(): String {
         when (spatialMode) {
             SpatialMode.FSM -> {
-                session!!.scene.requestHomeSpaceMode()
+                session!!.scene.requestHomeSpace()
                 spatialMode = SpatialMode.HSM
                 return getString(R.string.switch_to_fsm_button_text)
             }
 
             SpatialMode.HSM -> {
-                session!!.scene.requestFullSpaceMode()
+                session!!.scene.requestFullSpace()
                 spatialMode = SpatialMode.FSM
                 return getString(R.string.switch_to_hsm_button_text)
             }

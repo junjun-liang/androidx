@@ -26,7 +26,7 @@ import android.view.Surface
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -46,8 +46,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.opengl.EGLExt
 import androidx.opengl.EGLImageKHR
@@ -64,6 +62,7 @@ import androidx.xr.arcore.playservices.cameraState
 import androidx.xr.arcore.runtime.PerceptionRuntime
 import androidx.xr.runtime.Config
 import androidx.xr.runtime.DepthEstimationMode
+import androidx.xr.runtime.DeviceTrackingMode
 import androidx.xr.runtime.Session
 import androidx.xr.runtime.math.Matrix4
 import com.google.ar.core.exceptions.DeadlineExceededException
@@ -79,8 +78,7 @@ enum class DepthMode {
     SMOOTH,
 }
 
-class DepthActivity :
-    ComponentActivity(), DefaultLifecycleObserver, SampleRender.Companion.Renderer {
+class DepthActivity : ComponentActivity(), SampleRender.Companion.Renderer {
     private lateinit var session: Session
     private lateinit var sessionHelper: SessionLifecycleHelper
     private lateinit var arSession: com.google.ar.core.Session
@@ -98,8 +96,16 @@ class DepthActivity :
 
     private var selectedDepthMode by mutableStateOf(DepthMode.RAW)
 
-    private val rawConfig = Config(depthEstimation = DepthEstimationMode.RAW_ONLY)
-    private val smoothConfig = Config(depthEstimation = DepthEstimationMode.SMOOTH_ONLY)
+    private val rawConfig =
+        Config.Builder()
+            .setDeviceTracking(DeviceTrackingMode.SPATIAL)
+            .setDepthEstimation(DepthEstimationMode.RAW_ONLY)
+            .build()
+    private val smoothConfig =
+        Config.Builder()
+            .setDeviceTracking(DeviceTrackingMode.SPATIAL)
+            .setDepthEstimation(DepthEstimationMode.SMOOTH_ONLY)
+            .build()
     private var configurationMutex = Mutex()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -123,14 +129,22 @@ class DepthActivity :
         sessionHelper.tryCreateSession()
     }
 
-    override fun onResume(owner: LifecycleOwner) {
+    override fun onResume() {
+        super.onResume()
         if (::surfaceView.isInitialized) {
             surfaceView.onResume()
         }
     }
 
-    override fun onPause(owner: LifecycleOwner) {
+    override fun onPause() {
+        super.onPause()
         if (::surfaceView.isInitialized) {
+            surfaceView.queueEvent {
+                image?.let {
+                    EGLExt.eglDestroyImageKHR(EGL14.eglGetCurrentDisplay(), it)
+                    image = null
+                }
+            }
             surfaceView.onPause()
         }
     }
@@ -210,19 +224,21 @@ class DepthActivity :
         }
 
         val sessionState = session.state.value
-        val perceptionState = sessionState.perceptionState
         val cameraState = sessionState.cameraState
         if (cameraState != null && cameraState.transformCoordinates2D != null) {
             backgroundRenderer.updateDisplayGeometry(cameraState.transformCoordinates2D!!)
         }
-        if (perceptionState?.arDeviceState?.trackingState == TrackingState.TRACKING) {
-            if (image != null) {
-                EGLExt.eglDestroyImageKHR(EGL14.eglGetCurrentDisplay(), image!!)
-            }
+        // TODO(b/519686129): Use sessionState.perceptionState?.arDeviceState?.trackingState ==
+        // TrackingState.TRACKING
+        // once the tracking state issue is resolved. Using cameraState?.hardwareBuffer as a
+        // workaround
+        // to render background feed.
+        cameraState?.hardwareBuffer?.let { hardwareBuffer ->
+            image?.let { EGLExt.eglDestroyImageKHR(EGL14.eglGetCurrentDisplay(), it) }
             image =
                 EGLExt.eglCreateImageFromHardwareBuffer(
                     EGL14.eglGetCurrentDisplay(),
-                    cameraState?.hardwareBuffer!!,
+                    hardwareBuffer,
                 )
             maybeThrowGLException(
                 "Failed to create image from hardware buffer",
@@ -233,16 +249,13 @@ class DepthActivity :
                 backgroundRenderer.cameraColorTexture.textureId,
             )
             maybeThrowGLException("Failed to bind texture", "glBindTexture")
-            EGLExt.glEGLImageTargetTexture2DOES(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, image!!)
-            maybeThrowGLException(
-                "Failed to set image target texture",
-                "glEGLImageTargetTexture2DOES",
-            )
-            backgroundRenderer.drawBackground(render)
-
-            // If not tracking, don't draw 3D objects.
-            if (perceptionState.arDeviceState.trackingState == TrackingState.PAUSED) {
-                return
+            image?.let {
+                EGLExt.glEGLImageTargetTexture2DOES(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, it)
+                maybeThrowGLException(
+                    "Failed to set image target texture",
+                    "glEGLImageTargetTexture2DOES",
+                )
+                backgroundRenderer.drawBackground(render)
             }
         }
     }

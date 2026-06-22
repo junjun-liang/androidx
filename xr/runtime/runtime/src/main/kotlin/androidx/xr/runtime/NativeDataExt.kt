@@ -19,14 +19,9 @@
 package androidx.xr.runtime
 
 import android.content.Context
+import androidx.annotation.RestrictTo
 import androidx.lifecycle.Lifecycle
 import androidx.xr.runtime.internal.XrInstanceManager
-
-@RequiresOptIn(
-    "Access to native pointers is discouraged and the data returned by this API may change in the future."
-)
-@Retention(AnnotationRetention.BINARY)
-public annotation class UnstableNativeResourceApi
 
 /**
  * Returns a [NativeInstanceData] class containing pointers to native resources if available. This
@@ -36,7 +31,7 @@ public annotation class UnstableNativeResourceApi
  * in the native C spec for the relevant runtime. Applications should not trigger any lifecycle
  * events on their own.
  */
-@UnstableNativeResourceApi
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
 public fun XrDevice.getNativeInstanceData(context: Context): NativeInstanceData {
     return XrInstanceManager.getNativeInstanceData(context) ?: NativeInstanceData(0L, 0L)
 }
@@ -52,7 +47,7 @@ public fun XrDevice.getNativeInstanceData(context: Context): NativeInstanceData 
  * @throws [IllegalStateException] if the session is not using a runtime backed by a native session
  *   or the session has been destroyed.
  */
-@UnstableNativeResourceApi
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public fun Session.getNativeSessionData(): NativeSessionData {
     check(lifecycleOwner.lifecycle.currentState != Lifecycle.State.DESTROYED) {
         "Session has been destroyed."
@@ -71,6 +66,7 @@ public fun Session.getNativeSessionData(): NativeSessionData {
 }
 
 /** Class containing pointers to the native resources backing the XR runtime. */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
 public class NativeInstanceData
 internal constructor(
     /**
@@ -107,6 +103,7 @@ internal constructor(
 }
 
 /** Class containing pointers to the native resources backing the XR runtime. */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public class NativeSessionData
 internal constructor(
     /**

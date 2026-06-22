@@ -47,6 +47,7 @@ import androidx.compose.remote.core.operations.Theme;
 import androidx.compose.remote.core.operations.Utils;
 import androidx.compose.remote.core.operations.loom.PatternCallback;
 import androidx.compose.remote.player.core.RemoteDocument;
+import androidx.compose.remote.player.core.platform.AndroidCustomContext;
 import androidx.compose.remote.player.core.platform.AndroidRemoteContext;
 
 import org.jspecify.annotations.NonNull;
@@ -86,6 +87,7 @@ public class RemoteComposeView extends FrameLayout
     long mLongPressTimeout;
     long mDoubleTapTimeout;
 
+    AndroidCustomContext mAndroidCustomContext = null;
     AndroidRemoteContext mARContext;
     Map<Integer, Object> mResolvedData = null;
     PatternCallback mPatternCallback = null;
@@ -231,6 +233,7 @@ public class RemoteComposeView extends FrameLayout
         mStart = clock.nanoTime();
         mLastFrameCall = clock.millis();
         mARContext = new AndroidRemoteContext(clock);
+        mARContext.setAndroidContext(getContext());
         mARContext.setEdgeEffectBuilder(() -> new EdgeEffect(getContext()));
     }
 
@@ -267,6 +270,7 @@ public class RemoteComposeView extends FrameLayout
         }
 
         mDocument = value;
+        mARContext.setPaintContext(null);
         if (mPatternCallback != null) {
             mDocument.getDocument().setMacroCallback(mPatternCallback);
         }
@@ -376,6 +380,16 @@ public class RemoteComposeView extends FrameLayout
      */
     public void setHapticEngine(CoreDocument.@NonNull HapticEngine engine) {
         mDocument.getDocument().setHapticEngine(engine);
+    }
+
+    /**
+     * Sets the sound engine for the view. Used by {@link SoundSupport} to enable
+     * low-latency sound-effect playback.
+     *
+     * @param engine the SoundEngine
+     */
+    public void setSoundEngine(CoreDocument.@NonNull SoundEngine engine) {
+        mDocument.getDocument().setSoundEngine(engine);
     }
 
     @Override
@@ -623,12 +637,29 @@ public class RemoteComposeView extends FrameLayout
      * @param document document containing updates
      */
     public void applyUpdate(@NonNull RemoteDocument document) {
-        mDocument.getDocument().applyUpdate(document.getDocument());
+        if (mDisable || mDocument == null) {
+            return;
+        }
+        try {
+            mDocument.getDocument().applyUpdate(document.getDocument());
+        } catch (Throwable t) {
+            mErrorMessage = t.getMessage();
+            mDisable = true;
+        }
     }
 
     @Override
     public void onRequestLayout() {
         requestLayout();
+    }
+
+    /**
+     * Set a custom support object
+     *
+     * @param androidCustomSupport the custom support object
+     */
+    public void setCustomSupport(@Nullable AndroidCustomContext androidCustomSupport) {
+        mAndroidCustomContext = androidCustomSupport;
     }
 
     /** Interface to receive click events on components. */
@@ -671,126 +702,136 @@ public class RemoteComposeView extends FrameLayout
         if (USE_VIEW_AREA_CLICK && mHasClickAreas) {
             return super.onTouchEvent(event);
         }
-        CoreDocument doc = mDocument.getDocument();
-        float x = event.getX();
-        float y = event.getY();
-        long time = event.getEventTime();
+        if (mDisable || mDocument == null) {
+            return false;
+        }
+        try {
+            CoreDocument doc = mDocument.getDocument();
+            float x = event.getX();
+            float y = event.getY();
+            long time = event.getEventTime();
 
-        switch (event.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN:
-                mDownTime = time;
-                mDownX = x;
-                mDownY = y;
-                mInActionDown = true;
-                mHasMoved = false;
-                mIsLongPressPerformed = false;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    mDownTime = time;
+                    mDownX = x;
+                    mDownY = y;
+                    mInActionDown = true;
+                    mHasMoved = false;
+                    mIsLongPressPerformed = false;
 
-                if (mUseGestureDetector) {
-                    if (time - mLastUpTime < mDoubleTapTimeout) {
-                        float dx = x - mLastUpX;
-                        float dy = y - mLastUpY;
-                        if (dx * dx + dy * dy < mDoubleTapSlopSquare) {
-                            mIsDoubleTap = true;
+                    if (mUseGestureDetector) {
+                        if (time - mLastUpTime < mDoubleTapTimeout) {
+                            float dx = x - mLastUpX;
+                            float dy = y - mLastUpY;
+                            if (dx * dx + dy * dy < mDoubleTapSlopSquare) {
+                                mIsDoubleTap = true;
+                            } else {
+                                mIsDoubleTap = false;
+                            }
                         } else {
                             mIsDoubleTap = false;
                         }
-                    } else {
-                        mIsDoubleTap = false;
                     }
-                }
 
-                if (doc.hasTouchListener()) {
-                    mARContext.loadFloat(
-                            RemoteContext.ID_TOUCH_EVENT_TIME, mARContext.getAnimationTime());
-                    boolean handled = doc.touchDown(mARContext, x, y);
-                    if (handled) {
-                        if (mVelocityTracker == null) {
-                            mVelocityTracker = VelocityTracker.obtain();
-                        } else {
-                            mVelocityTracker.clear();
+                    if (doc.hasTouchListener()) {
+                        mARContext.loadFloat(
+                                RemoteContext.ID_TOUCH_EVENT_TIME, mARContext.getAnimationTime());
+                        boolean handled = doc.touchDown(mARContext, x, y);
+                        if (handled) {
+                            if (mVelocityTracker == null) {
+                                mVelocityTracker = VelocityTracker.obtain();
+                            } else {
+                                mVelocityTracker.clear();
+                            }
+                            mVelocityTracker.addMovement(event);
+                            invalidate();
+                            return true;
                         }
-                        mVelocityTracker.addMovement(event);
+                    }
+                    mInActionDown = false;
+                    return false;
+
+                case MotionEvent.ACTION_CANCEL:
+                    mInActionDown = false;
+                    if (doc.hasTouchListener()) {
+                        mVelocityTracker.computeCurrentVelocity(1000);
+                        float dx = mVelocityTracker.getXVelocity(pointerId);
+                        float dy = mVelocityTracker.getYVelocity(pointerId);
+                        doc.touchCancel(mARContext, x, y, dx, dy);
                         invalidate();
                         return true;
                     }
-                }
-                mInActionDown = false;
-                return false;
+                    return false;
 
-            case MotionEvent.ACTION_CANCEL:
-                mInActionDown = false;
-                if (doc.hasTouchListener()) {
-                    mVelocityTracker.computeCurrentVelocity(1000);
-                    float dx = mVelocityTracker.getXVelocity(pointerId);
-                    float dy = mVelocityTracker.getYVelocity(pointerId);
-                    doc.touchCancel(mARContext, x, y, dx, dy);
-                    invalidate();
-                    return true;
-                }
-                return false;
-
-            case MotionEvent.ACTION_UP:
-                mInActionDown = false;
-                mActionCurrentPoint.x = (int) x;
-                mActionCurrentPoint.y = (int) y;
-                boolean handled = false;
-                if (!mHasMoved) {
-                    if (mIsDoubleTap) {
-                        doc.onDoubleClick(mARContext, x, y);
-                        mLastUpTime = 0;
-                        mIsDoubleTap = false;
-                    } else if (!mIsLongPressPerformed) {
-                        long duration = time - mDownTime;
-                        if (mUseGestureDetector && duration >= mLongPressTimeout) {
-                            doc.onLongPress(mARContext, x, y);
-                            mLastUpTime = 0;
-                        } else {
-                            performClick();
-                            mLastUpTime = time;
-                            mLastUpX = x;
-                            mLastUpY = y;
-                            handled = true;
-                        }
-                    }
-                    invalidate();
-                }
-                if (doc.hasTouchListener()) {
-                    mARContext.loadFloat(
-                            RemoteContext.ID_TOUCH_EVENT_TIME, mARContext.getAnimationTime());
-                    mVelocityTracker.computeCurrentVelocity(1000);
-                    float dx = mVelocityTracker.getXVelocity(pointerId);
-                    float dy = mVelocityTracker.getYVelocity(pointerId);
-                    doc.touchUp(mARContext, x, y, dx, dy);
-                    invalidate();
-                    handled = true;
-                }
-                return handled;
-
-            case MotionEvent.ACTION_MOVE:
-                if (!mHasMoved) {
-                    float dx = x - mDownX;
-                    float dy = y - mDownY;
-                    if (dx * dx + dy * dy > mTouchSlop * mTouchSlop) {
-                        mHasMoved = true;
-                    }
-                }
-                if (mInActionDown) {
+                case MotionEvent.ACTION_UP:
+                    mInActionDown = false;
                     mActionCurrentPoint.x = (int) x;
                     mActionCurrentPoint.y = (int) y;
-                    if (mVelocityTracker != null) {
+                    boolean handled = false;
+                    if (!mHasMoved) {
+                        if (mIsDoubleTap) {
+                            doc.onDoubleClick(mARContext, x, y);
+                            mLastUpTime = 0;
+                            mIsDoubleTap = false;
+                        } else if (!mIsLongPressPerformed) {
+                            long duration = time - mDownTime;
+                            if (mUseGestureDetector && duration >= mLongPressTimeout) {
+                                doc.onLongPress(mARContext, x, y);
+                                mLastUpTime = 0;
+                            } else {
+                                performClick();
+                                mLastUpTime = time;
+                                mLastUpX = x;
+                                mLastUpY = y;
+                                handled = true;
+                            }
+                        }
+                        invalidate();
+                    }
+                    if (doc.hasTouchListener()) {
                         mARContext.loadFloat(
                                 RemoteContext.ID_TOUCH_EVENT_TIME, mARContext.getAnimationTime());
-                        mVelocityTracker.addMovement(event);
-                        boolean repaint = doc.touchDrag(mARContext, x, y);
-                        if (repaint) {
-                            invalidate();
+                        mVelocityTracker.computeCurrentVelocity(1000);
+                        float dx = mVelocityTracker.getXVelocity(pointerId);
+                        float dy = mVelocityTracker.getYVelocity(pointerId);
+                        doc.touchUp(mARContext, x, y, dx, dy);
+                        invalidate();
+                        handled = true;
+                    }
+                    return handled;
+
+                case MotionEvent.ACTION_MOVE:
+                    if (!mHasMoved) {
+                        float dx = x - mDownX;
+                        float dy = y - mDownY;
+                        if (dx * dx + dy * dy > mTouchSlop * mTouchSlop) {
+                            mHasMoved = true;
                         }
                     }
-                    return true;
-                }
-                return false;
+                    if (mInActionDown) {
+                        mActionCurrentPoint.x = (int) x;
+                        mActionCurrentPoint.y = (int) y;
+                        if (mVelocityTracker != null) {
+                            mARContext.loadFloat(
+                                    RemoteContext.ID_TOUCH_EVENT_TIME,
+                                    mARContext.getAnimationTime());
+                            mVelocityTracker.addMovement(event);
+                            boolean repaint = doc.touchDrag(mARContext, x, y);
+                            if (repaint) {
+                                invalidate();
+                            }
+                        }
+                        return true;
+                    }
+                    return false;
+            }
+            return false;
+        } catch (Throwable e) {
+            mErrorMessage = e.getMessage();
+            mDisable = true;
+            return false;
         }
-        return false;
     }
 
     @Override
@@ -798,9 +839,20 @@ public class RemoteComposeView extends FrameLayout
         if (USE_VIEW_AREA_CLICK && mHasClickAreas) {
             return super.performClick();
         }
-        mDocument
-                .getDocument()
-                .onClick(mARContext, (float) mActionCurrentPoint.x, (float) mActionCurrentPoint.y);
+        if (mDisable || mDocument == null) {
+            return super.performClick();
+        }
+        try {
+            mDocument
+                    .getDocument()
+                    .onClick(
+                            mARContext,
+                            (float) mActionCurrentPoint.x,
+                            (float) mActionCurrentPoint.y);
+        } catch (Throwable e) {
+            mErrorMessage = e.getMessage();
+            mDisable = true;
+        }
         super.performClick();
         invalidate();
         return true;
@@ -828,73 +880,91 @@ public class RemoteComposeView extends FrameLayout
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        if (mDocument == null) {
+        if (mDocument == null || mDisable) {
+            int w =
+                    mDocument == null
+                            ? 0
+                            : measureDimension(widthMeasureSpec, mDocument.getWidth());
+            int h =
+                    mDocument == null
+                            ? 0
+                            : measureDimension(heightMeasureSpec, mDocument.getHeight());
+            setMeasuredDimension(w, h);
             return;
         }
-        int preWidth = getWidth();
-        int preHeight = getHeight();
+        try {
+            int preWidth = getWidth();
+            int preHeight = getHeight();
 
-        int w;
-        int h;
+            int w;
+            int h;
 
-        if (!mDocument.useFeature(Header.FEATURE_PAINT_MEASURE)) {
-            int widthMode = MeasureSpec.getMode(widthMeasureSpec);
-            int heightMode = MeasureSpec.getMode(heightMeasureSpec);
-            int widthSize = MeasureSpec.getSize(widthMeasureSpec);
-            int heightSize = MeasureSpec.getSize(heightMeasureSpec);
-            float maxWidth = Float.MAX_VALUE;
-            float maxHeight = Float.MAX_VALUE;
-            switch (widthMode) {
-                case MeasureSpec.EXACTLY:
-                    maxWidth = widthSize;
-                    break;
-                case MeasureSpec.AT_MOST:
-                    maxWidth = widthSize;
-                    break;
-                case MeasureSpec.UNSPECIFIED:
-                    break;
-            }
-            switch (heightMode) {
-                case MeasureSpec.EXACTLY:
-                    maxHeight = heightSize;
-                    break;
-                case MeasureSpec.AT_MOST:
-                    maxHeight = heightSize;
-                    break;
-                case MeasureSpec.UNSPECIFIED:
-                    break;
-            }
-
-            if (mARContext.getPaintContext() != null) {
-                mDocument.getDocument().measure(mARContext, 0, maxWidth, 0, maxHeight);
-            }
-
-            w = measureDimension(widthMeasureSpec, mDocument.getWidth());
-            h = measureDimension(heightMeasureSpec, mDocument.getHeight());
-
-            if (mARContext.getPaintContext() == null) {
-                if (w == 0) {
-                    w = (int) maxWidth;
+            if (!mDocument.useFeature(Header.FEATURE_PAINT_MEASURE)) {
+                int widthMode = MeasureSpec.getMode(widthMeasureSpec);
+                int heightMode = MeasureSpec.getMode(heightMeasureSpec);
+                int widthSize = MeasureSpec.getSize(widthMeasureSpec);
+                int heightSize = MeasureSpec.getSize(heightMeasureSpec);
+                float maxWidth = Float.MAX_VALUE;
+                float maxHeight = Float.MAX_VALUE;
+                switch (widthMode) {
+                    case MeasureSpec.EXACTLY:
+                        maxWidth = widthSize;
+                        break;
+                    case MeasureSpec.AT_MOST:
+                        maxWidth = widthSize;
+                        break;
+                    case MeasureSpec.UNSPECIFIED:
+                        break;
                 }
-                if (h == 0) {
-                    h = (int) maxHeight;
+                switch (heightMode) {
+                    case MeasureSpec.EXACTLY:
+                        maxHeight = heightSize;
+                        break;
+                    case MeasureSpec.AT_MOST:
+                        maxHeight = heightSize;
+                        break;
+                    case MeasureSpec.UNSPECIFIED:
+                        break;
+                }
+
+                if (mARContext.getPaintContext() != null) {
+                    mDocument.getDocument().measure(mARContext, 0, maxWidth, 0, maxHeight);
+                }
+
+                w = measureDimension(widthMeasureSpec, mDocument.getWidth());
+                h = measureDimension(heightMeasureSpec, mDocument.getHeight());
+
+                if (mARContext.getPaintContext() == null) {
+                    if (w == 0) {
+                        w = (int) maxWidth;
+                    }
+                    if (h == 0) {
+                        h = (int) maxHeight;
+                    }
+                }
+            } else {
+                w = measureDimension(widthMeasureSpec, mDocument.getWidth());
+                h = measureDimension(heightMeasureSpec, mDocument.getHeight());
+            }
+
+            if (!USE_VIEW_AREA_CLICK) {
+                if (mDocument.getDocument().getContentSizing()
+                        == RootContentBehavior.SIZING_SCALE) {
+                    mDocument.getDocument().computeScale(w, h, sScaleOutput);
+                    w = (int) (mDocument.getWidth() * sScaleOutput[0]);
+                    h = (int) (mDocument.getHeight() * sScaleOutput[1]);
                 }
             }
-        } else {
-            w = measureDimension(widthMeasureSpec, mDocument.getWidth());
-            h = measureDimension(heightMeasureSpec, mDocument.getHeight());
-        }
-
-        if (!USE_VIEW_AREA_CLICK) {
-            if (mDocument.getDocument().getContentSizing() == RootContentBehavior.SIZING_SCALE) {
-                mDocument.getDocument().computeScale(w, h, sScaleOutput);
-                w = (int) (mDocument.getWidth() * sScaleOutput[0]);
-                h = (int) (mDocument.getHeight() * sScaleOutput[1]);
+            setMeasuredDimension(w, h);
+            if (preWidth != w || preHeight != h) {
+                mDocument.getDocument().invalidateMeasure();
             }
-        }
-        setMeasuredDimension(w, h);
-        if (preWidth != w || preHeight != h) {
-            mDocument.getDocument().invalidateMeasure();
+        } catch (Throwable t) {
+            mDisable = true;
+            mErrorMessage = t.getMessage();
+            int w = measureDimension(widthMeasureSpec, mDocument.getWidth());
+            int h = measureDimension(heightMeasureSpec, mDocument.getHeight());
+            setMeasuredDimension(w, h);
         }
     }
 
@@ -957,6 +1027,9 @@ public class RemoteComposeView extends FrameLayout
             mARContext.currentTime = mClock.millis();
             mARContext.setDebug(mDebug);
             mARContext.useCanvas(canvas);
+            if (mARContext.getPaintContext() != null && mAndroidCustomContext != null) {
+                mARContext.getPaintContext().setCustomSupport(mAndroidCustomContext);
+            }
             mARContext.mWidth = getWidth();
             mARContext.mHeight = getHeight();
             mDocument.paint(mARContext, theme);

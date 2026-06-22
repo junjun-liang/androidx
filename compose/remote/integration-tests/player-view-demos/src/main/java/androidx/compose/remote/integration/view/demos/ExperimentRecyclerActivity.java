@@ -64,6 +64,7 @@ import androidx.compose.remote.core.CoreDocument.ShaderControl;
 import androidx.compose.remote.core.RemoteComposeBuffer;
 import androidx.compose.remote.creation.RemoteComposeContext;
 import androidx.compose.remote.creation.RemoteComposeWriter;
+import androidx.compose.remote.integration.view.demos.customviews.AndroidCustomSupport;
 import androidx.compose.remote.integration.view.demos.examples.DemoPaths;
 import androidx.compose.remote.integration.view.demos.utils.RCDoc;
 import androidx.compose.remote.player.core.RemoteDocument;
@@ -132,7 +133,7 @@ public class ExperimentRecyclerActivity extends Activity {
 
         sPersonImage3 = BitmapFactory.decodeResource(context.getResources(),
                 R.drawable.mostly_cloudy);
-        ArrayList<RCDoc> list = new ArrayList<>(DemosCreation.getDemos(this));
+        ArrayList<RCDoc> list = new ArrayList<>(DemosCreation.getDemos(this, 4 + 2));
         list.addAll(getRemoteComposable(context));
 
         return list;
@@ -746,6 +747,7 @@ public class ExperimentRecyclerActivity extends Activity {
             super(context);
             setOrientation(VERTICAL);
             mPlayer = new RemoteComposePlayer(context);
+            mPlayer.setCustomSupport(new AndroidCustomSupport());
             mTitle = new TextView(context);
             mStats = new TextView(context);
             mPlayer.setShaderControl(new ShaderControl() {
@@ -1005,7 +1007,6 @@ public class ExperimentRecyclerActivity extends Activity {
         return getp(name, () -> gen.get().mRemoteWriter);
     }
 
-
     /**
      * Creates a document with a name and a writer supplier
      *
@@ -1083,7 +1084,6 @@ public class ExperimentRecyclerActivity extends Activity {
         };
     }
 
-    /**
     /**
      * Creates a document with a name and a writer supplier
      *

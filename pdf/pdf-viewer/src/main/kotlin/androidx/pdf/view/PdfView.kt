@@ -41,7 +41,9 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewStructure
 import android.view.accessibility.AccessibilityManager
+import android.view.autofill.AutofillValue
 import android.view.inputmethod.InputMethodManager
 import androidx.annotation.FloatRange
 import androidx.annotation.IntDef
@@ -58,17 +60,22 @@ import androidx.core.util.Pools
 import androidx.core.util.keyIterator
 import androidx.core.util.valueIterator
 import androidx.core.view.ViewCompat
+import androidx.pdf.Highlight
 import androidx.pdf.PdfDocument
 import androidx.pdf.PdfFeature
 import androidx.pdf.PdfPoint
 import androidx.pdf.R
+import androidx.pdf.autofill.PdfAutofillHandler
 import androidx.pdf.content.ExternalLink
 import androidx.pdf.event.PdfTrackingEvent
 import androidx.pdf.event.RequestFailureEvent
 import androidx.pdf.exceptions.RequestFailedException
+import androidx.pdf.featureflag.PdfFeatureFlags
 import androidx.pdf.formfilling.FormFillingEditTextState
 import androidx.pdf.models.FormEditInfo
 import androidx.pdf.models.FormWidgetInfo
+import androidx.pdf.ocr.OcrContextRepository
+import androidx.pdf.ocr.OcrProvider
 import androidx.pdf.selection.ContextMenuComponent
 import androidx.pdf.selection.Selection
 import androidx.pdf.selection.SelectionActionModeCallback
@@ -293,6 +300,32 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
             field = value
             selectionStateManager?.isImageSelectionEnabled = value
         }
+
+    private var ocrProvider: OcrProvider? = null
+
+    /**
+     * Sets the [OcrProvider] used for recognizing text in image-based PDF content.
+     *
+     * When set, it enables text selection within images by delegating OCR processing to the
+     * provided engine.
+     *
+     * @param ocrProvider the [OcrProvider] to use for text recognition
+     */
+    public fun setOcrProvider(ocrProvider: OcrProvider?) {
+        checkMainThread()
+        if (this@PdfView.ocrProvider == ocrProvider) return
+        this@PdfView.ocrProvider = ocrProvider
+        selectionStateManager?.ocrProvider = ocrProvider
+
+        val localPdfDocument = pdfDocument
+        val ocrContextRepository =
+            if (ocrProvider != null && localPdfDocument != null) {
+                OcrContextRepository(localPdfDocument, ocrProvider)
+            } else {
+                null
+            }
+        pageManager?.setOcrContextRepository(ocrContextRepository)
+    }
 
     /**
      * The maximum scaling factor that can be applied to this View using the [zoom] property. This
@@ -690,6 +723,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
     private var errorStateCollector: Job? = null
     private var formEditInfoCollector: Job? = null
     private var selectionMenuJob: Job? = null
+    private var hintTextCollector: Job? = null
 
     private var deferredScrollTarget: DeferredScrollTarget? = null
     private val onScrollDeferred: (DeferredScrollTarget) -> Unit = { deferredScrollTarget = it }
@@ -715,6 +749,12 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
 
     private val isAtRightEdge: Boolean
         get() = scrollX == computeHorizontalScrollRange()
+
+    private var pdfAutofillHandler: PdfAutofillHandler? = null
+        get() {
+            if (!PdfFeatureFlags.isAutofillEnabled) return null
+            return field ?: PdfAutofillHandler(this, ::pdfToViewPoint).also { field = it }
+        }
 
     /** Used to track is the first page is rendered. */
     private var isFirstPageRendered: Boolean = false
@@ -764,8 +804,15 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
     public var fastScrollVisibility: FastScrollVisibility = FastScrollVisibility.AUTO_HIDE
         set(value) {
             field = value
-            if (value == FastScrollVisibility.ALWAYS_SHOW) fastScroller?.show { postInvalidate() }
-            else if (value == FastScrollVisibility.ALWAYS_HIDE) fastScroller?.hide()
+            fastScroller?.shouldAutoHide = (value == FastScrollVisibility.AUTO_HIDE)
+            if (
+                value == FastScrollVisibility.ALWAYS_SHOW || value == FastScrollVisibility.AUTO_HIDE
+            )
+                fastScroller?.show { postInvalidate() }
+            else {
+                fastScroller?.hide()
+                postInvalidate()
+            }
         }
 
     /**
@@ -886,6 +933,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
         set(value) {
             field = value
             pageManager?.isAccessibilityEnabled = value
+            initAccessibility()
         }
 
     private var accessibilityManager: AccessibilityManager =
@@ -894,9 +942,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
     internal val accessibilityStateChangeHandler =
         AccessibilityManager.AccessibilityStateChangeListener { isEnabled ->
             isAccessibilityEnabled = isEnabled
-            setAccessibility()
         }
-
     private var selectionStateManager: SelectionStateManager? = null
     private val selectionRenderer = SelectionRenderer(context)
 
@@ -906,6 +952,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
     /** Selects all text on the current selected page range asynchronously. */
     internal fun selectAllText() {
         if (pdfDocument?.isFeatureSupported(PdfFeature.TEXT_SELECTION) == true) {
+            selectionStateManager?.maybeHideActionMode()
             selectionStateManager?.selectAllText()
         }
     }
@@ -1509,6 +1556,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
         mainDispatcher = HandlerCompat.createAsync(handler.looper).asCoroutineDispatcher()
 
         accessibilityManager.addAccessibilityStateChangeListener(accessibilityStateChangeHandler)
+        formWidgetInteractionHandler?.interactionListener = pdfAutofillHandler?.interactionListener
         // PageManager is being reset on onDetachToWindow we should make sure we set it back.
         maybeUpdatePageVisibility()
     }
@@ -1531,6 +1579,8 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
 
         pdfDocument?.removeOnPdfContentInvalidatedListener(onPdfContentInvalidatedListener)
         accessibilityManager.removeAccessibilityStateChangeListener(accessibilityStateChangeHandler)
+        pdfAutofillHandler = null
+        formWidgetInteractionHandler?.interactionListener = null
         removeCallbacks(showSelectionActionModeRunnable)
     }
 
@@ -1600,6 +1650,25 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
         val cappedX = x.coerceIn(0..computeHorizontalScrollRange())
         val cappedY = y.coerceIn(minVerticalScrollPosition..computeVerticalScrollRange())
         super.scrollTo(cappedX, cappedY)
+    }
+
+    override fun onProvideAutofillVirtualStructure(structure: ViewStructure?, flags: Int) {
+        super.onProvideAutofillVirtualStructure(structure, flags)
+
+        if (structure != null && isFormFillingEnabled) {
+            val state = pageLayoutManager?.pdfFormFillingState ?: return
+            pdfAutofillHandler?.onProvideVirtualStructure(structure, state, visiblePages)
+        }
+    }
+
+    override fun autofill(values: SparseArray<AutofillValue>) {
+        if (isFormFillingEnabled) {
+            pdfAutofillHandler?.applyAutofillValues(
+                values,
+                formFillingEditText,
+                formWidgetInteractionHandler,
+            )
+        }
     }
 
     /**
@@ -1687,7 +1756,6 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
             PageLayoutManager(
                     localPdfDocument,
                     backgroundScope,
-                    topPageMarginPx = context.getDimensions(R.dimen.top_page_margin),
                     pagesPerRow = pagesPerRow,
                     horizontalPageSpacingPx = horizontalPageSpacing.toFloat(),
                     verticalPageSpacingPx = verticalPageSpacing.toFloat(),
@@ -1709,6 +1777,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
                 pageManager = pageManager,
                 initialSelection = localStateToRestore.selectionModel,
                 isImageSelectionEnabled = localStateToRestore.isImageSelectionEnabled,
+                ocrProvider = ocrProvider,
             )
 
         val positionToRestore =
@@ -1726,7 +1795,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
         if (isImageSelectionAvailableInSdk()) {
             isImageSelectionEnabled = localStateToRestore.isImageSelectionEnabled
         }
-        setAccessibility()
+        initAccessibility()
 
         restoreFormFillingEditText()
 
@@ -1805,6 +1874,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
                     }
                 }
         }
+
         selectionStateManager?.let { manager ->
             val selectionToJoin = selectionStateCollector?.apply { cancel() }
             selectionStateCollector =
@@ -1860,6 +1930,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
         selectionStateCollector?.cancel()
         formEditInfoCollector?.cancel()
         errorStateCollector?.cancel()
+        hintTextCollector?.cancel()
     }
 
     private fun onSelectionUiSignal(signal: SelectionUiSignal) {
@@ -1973,12 +2044,14 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
                 Point(maxBitmapDimensionPx, maxBitmapDimensionPx),
                 errorFlow,
                 isAccessibilityEnabled,
+                ocrProvider?.let { OcrContextRepository(localPdfDocument, it) },
             )
 
         formWidgetInteractionHandler =
             FormWidgetInteractionHandler(context, backgroundScope) { formFillingEditText ->
                 this.formFillingEditText = formFillingEditText
             }
+        formWidgetInteractionHandler?.interactionListener = pdfAutofillHandler?.interactionListener
 
         val mainExecutor = ContextCompat.getMainExecutor(context)
         localPdfDocument.addOnPdfContentInvalidatedListener(
@@ -2000,7 +2073,6 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
                 PageLayoutManager(
                         localPdfDocument,
                         backgroundScope,
-                        topPageMarginPx = context.getDimensions(R.dimen.top_page_margin),
                         pagesPerRow = pagesPerRow,
                         horizontalPageSpacingPx = horizontalPageSpacing.toFloat(),
                         verticalPageSpacingPx = verticalPageSpacing.toFloat(),
@@ -2021,8 +2093,9 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
                     pageLayoutManager = pageLayoutManager,
                     pageManager = pageManager,
                     isImageSelectionEnabled = isImageSelectionAvailable,
+                    ocrProvider = ocrProvider,
                 )
-            setAccessibility()
+            initAccessibility()
         }
 
         /* PageMetadataLoader must have been initialized either with the restored state
@@ -2251,11 +2324,6 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
             ),
             formWidgetInfos,
         )
-
-        if (isFormFillingEnabled) {
-            backgroundScope.launch { formWidgetMetadataLoader?.maybeLoadHintsForPage(pageNum) }
-        }
-
         // Learning the dimensions of a page can change our understanding of the content that's in
         // the viewport
         onViewportChanged()
@@ -2336,7 +2404,13 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
      * and [.pageManager] are initialized, and sets it as the accessibility delegate for the view
      * using [ViewCompat.setAccessibilityDelegate].
      */
-    private fun setAccessibility() {
+    private fun initAccessibility() {
+        fastScrollVisibility =
+            if (isAccessibilityEnabled) {
+                FastScrollVisibility.ALWAYS_SHOW
+            } else {
+                FastScrollVisibility.AUTO_HIDE
+            }
         if (isAccessibilityEnabled && pageLayoutManager != null && pageManager != null) {
             pdfViewAccessibilityManager =
                 PdfViewAccessibilityManager(
@@ -2351,6 +2425,16 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
             pdfViewAccessibilityManager = null
         }
         ViewCompat.setAccessibilityDelegate(this, pdfViewAccessibilityManager)
+    }
+
+    @RestrictTo(RestrictTo.Scope.LIBRARY)
+    public fun updateFastScrollVisibility() {
+        fastScrollVisibility =
+            if (isAccessibilityEnabled) {
+                FastScrollVisibility.ALWAYS_SHOW
+            } else {
+                FastScrollVisibility.AUTO_HIDE
+            }
     }
 
     internal fun commitFormFillingEditText() {
@@ -2568,6 +2652,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
 
         override fun onLongPress(e: MotionEvent) {
             super.onLongPress(e)
+            this@PdfView.requestFocus()
             val localPageLayoutManager = pageLayoutManager ?: return super.onLongPress(e)
             val touchPoint =
                 localPageLayoutManager.getPdfPointAt(
@@ -2642,6 +2727,7 @@ constructor(context: Context, attrs: AttributeSet? = null, defStyle: Int = 0) :
         }
 
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            this@PdfView.requestFocus()
             commitFormFillingEditText()
             selectionStateManager?.clearCurrentSelection()
             val localPageLayoutManager = pageLayoutManager ?: return super.onSingleTapConfirmed(e)

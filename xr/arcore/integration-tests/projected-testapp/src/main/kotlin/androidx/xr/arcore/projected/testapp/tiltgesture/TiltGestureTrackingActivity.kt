@@ -45,7 +45,6 @@ import androidx.xr.glimmer.Icon
 import androidx.xr.glimmer.Text
 import androidx.xr.runtime.Config
 import androidx.xr.runtime.DeviceTrackingMode
-import androidx.xr.runtime.PreviewSpatialApi
 import androidx.xr.runtime.Session
 import androidx.xr.runtime.SessionConfigureSuccess
 import androidx.xr.runtime.SessionCreateApkRequired
@@ -90,7 +89,7 @@ class TiltGestureTrackingActivity : ComponentActivity() {
             }
     }
 
-    @OptIn(ExperimentalGesturesApi::class, PreviewSpatialApi::class)
+    @OptIn(ExperimentalGesturesApi::class)
     @Composable
     private fun TiltDemoApp(state: TiltGesture.State) {
         Column(
@@ -119,8 +118,7 @@ class TiltGestureTrackingActivity : ComponentActivity() {
         }
     }
 
-    @OptIn(PreviewSpatialApi::class)
-    private fun tryCreateSession() {
+    private suspend fun tryCreateSession() {
         Log.i(TAG, "Session.create($this)")
         // TODO(b/510012792): Use Projected Device Context after 1.55.
         when (val result = Session.create(context = this, lifecycleOwner = this)) {
@@ -128,7 +126,11 @@ class TiltGestureTrackingActivity : ComponentActivity() {
                 session = result.session
                 try {
                     val configResult =
-                        session.configure(Config(deviceTracking = DeviceTrackingMode.INERTIAL))
+                        session.configure(
+                            Config.Builder()
+                                .setDeviceTracking(createInertialDeviceTrackingMode())
+                                .build()
+                        )
                     when (configResult) {
                         is SessionConfigureSuccess -> {
                             Log.i(TAG, "Session created successfully!!")
@@ -156,5 +158,14 @@ class TiltGestureTrackingActivity : ComponentActivity() {
                 Log.e(TAG, "Unexpected ${result::class.simpleName}")
             }
         }
+    }
+
+    private fun createInertialDeviceTrackingMode(): androidx.xr.runtime.DeviceTrackingMode {
+        val constructor =
+            androidx.xr.runtime.DeviceTrackingMode::class
+                .java
+                .getDeclaredConstructor(Int::class.javaPrimitiveType!!)
+        constructor.isAccessible = true
+        return constructor.newInstance(2)
     }
 }

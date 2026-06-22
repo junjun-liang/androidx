@@ -30,6 +30,7 @@ import androidx.xr.scenecore.testing.FakePointerCaptureComponent
 import com.google.common.truth.Truth.assertThat
 import com.google.common.util.concurrent.MoreExecutors.directExecutor
 import java.util.function.Consumer
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Before
 import org.junit.Test
@@ -65,7 +66,7 @@ class PointerCaptureComponentTest {
         }
 
     @Before
-    fun setUp() {
+    fun setUp(): Unit = runBlocking {
         val testDispatcher = StandardTestDispatcher()
         val result = Session.create(activity, testDispatcher)
 
@@ -192,5 +193,15 @@ class PointerCaptureComponentTest {
 
         entity.removeComponent(pointerCaptureComponent)
         assertThat(rtEntity?.getComponents()).hasSize(0)
+    }
+
+    @Test
+    fun pointerCaptureState_toString() {
+        assertThat(PointerCaptureComponent.PointerCaptureState.PAUSED.toString())
+            .isEqualTo("PAUSED")
+        assertThat(PointerCaptureComponent.PointerCaptureState.ACTIVE.toString())
+            .isEqualTo("ACTIVE")
+        assertThat(PointerCaptureComponent.PointerCaptureState.STOPPED.toString())
+            .isEqualTo("STOPPED")
     }
 }

@@ -18,8 +18,8 @@ package androidx.glance.wear.parcel
 
 import android.content.Context
 import android.os.Bundle
-import androidx.compose.remote.creation.CreationDisplayInfo
 import androidx.compose.remote.creation.compose.capture.CapturedDocument
+import androidx.compose.remote.creation.compose.capture.RemoteCreationDisplayInfo
 import androidx.compose.remote.creation.compose.capture.captureSingleRemoteDocument
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
@@ -34,7 +34,7 @@ internal object WearWidgetCapture {
      */
     internal suspend fun capture(
         context: Context,
-        creationDisplayInfo: CreationDisplayInfo,
+        creationDisplayInfo: RemoteCreationDisplayInfo,
         content: @Composable @RemoteComposable () -> Unit,
     ): WearWidgetRawContent {
         val remoteDocument =

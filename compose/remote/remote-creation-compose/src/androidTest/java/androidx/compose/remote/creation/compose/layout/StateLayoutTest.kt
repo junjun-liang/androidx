@@ -17,7 +17,7 @@
 package androidx.compose.remote.creation.compose.layout
 
 import androidx.compose.remote.creation.compose.SCREENSHOT_GOLDEN_DIRECTORY
-import androidx.compose.remote.creation.compose.action.ValueChange
+import androidx.compose.remote.creation.compose.action.valueChange
 import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 import androidx.compose.remote.creation.compose.modifier.background
 import androidx.compose.remote.creation.compose.modifier.border
@@ -30,7 +30,7 @@ import androidx.compose.remote.creation.compose.state.rc
 import androidx.compose.remote.creation.compose.state.rdp
 import androidx.compose.remote.creation.compose.state.rememberMutableRemoteEnum
 import androidx.compose.remote.creation.compose.state.rs
-import androidx.compose.remote.player.compose.test.utils.screenshot.rule.RemoteScreenshotTestRule
+import androidx.compose.remote.player.compose.test.utils.RemoteScreenshotTestRule
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.test.core.app.ApplicationProvider
@@ -76,7 +76,7 @@ class StateLayoutTest {
                         color = Color.Black.rc,
                         modifier =
                             RemoteModifier.clickable(
-                                ValueChange(
+                                valueChange(
                                     currentState,
                                     RemoteEnum(
                                         if (state == LayoutState.First) LayoutState.Second
@@ -125,7 +125,7 @@ class StateLayoutTest {
         content: @Composable @RemoteComposable (LayoutState) -> Unit,
     ) {
         RemoteStateLayout(
-            state = currentState,
+            currentState = currentState,
             modifier = RemoteModifier.fillMaxSize().background(Color.LightGray.rc),
         ) { layoutState ->
             RemoteColumn(

@@ -72,8 +72,11 @@ import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
 import androidx.collection.MutableIntObjectMap
 import androidx.collection.MutableObjectList
+import androidx.collection.ScatterMap
 import androidx.collection.mutableIntObjectMapOf
 import androidx.collection.mutableObjectListOf
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -153,21 +156,22 @@ import androidx.compose.ui.input.pointer.ProcessResult
 import androidx.compose.ui.input.rotary.RotaryInputModifierNode
 import androidx.compose.ui.input.rotary.RotaryScrollEvent
 import androidx.compose.ui.internal.checkPreconditionNotNull
+import androidx.compose.ui.layout.InsetsListener
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.PlacementScope
+import androidx.compose.ui.layout.RectRulers
 import androidx.compose.ui.layout.RootMeasurePolicy
-import androidx.compose.ui.layout.Ruler
 import androidx.compose.ui.layout.RulerKey
 import androidx.compose.ui.layout.RulerScope
 import androidx.compose.ui.layout.WindowInsetsRulerProvider
-import androidx.compose.ui.layout.WindowInsetsRulersProvider
-import androidx.compose.ui.layout.WindowInsetsWatcher
+import androidx.compose.ui.layout.WindowWindowInsetsAnimationValues
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.provideWindowInsetsRulers
 import androidx.compose.ui.modifier.ModifierLocalManager
 import androidx.compose.ui.node.LayoutModifierNode
 import androidx.compose.ui.node.LayoutNode
@@ -235,6 +239,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.get
 import java.lang.reflect.Method
+import java.util.concurrent.Executor
 import java.util.function.Consumer
 import kotlin.coroutines.CoroutineContext
 import kotlin.math.abs
@@ -311,6 +316,19 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
     private var lifecycleRetainedValuesStoreOwnerEntry:
         LifecycleRetainedValuesStoreOwner.RetainedValuesStoreEntry? =
         null
+    private var _savedStateRegistry: DisposableSaveableStateRegistry? = null
+
+    val savedStateRegistry: DisposableSaveableStateRegistry
+        get() =
+            _savedStateRegistry
+                ?: DisposableSaveableStateRegistry(this, composeViewContext.savedStateRegistryOwner)
+                    .also { _savedStateRegistry = it }
+
+    internal fun disposeSavedStateRegistry() {
+        _savedStateRegistry?.dispose()
+        _savedStateRegistry = null
+    }
+
     override var retainedValuesStore: RetainedValuesStore = ForgetfulRetainedValuesStore
         private set
 
@@ -393,7 +411,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
         // The view system does not have an API corresponding to Enter/Exit.
         if (focusDirection == Enter || focusDirection == Exit || !hasFocus()) return false
 
-        val androidViewsHandler = androidViewsHandler ?: return false
+        val androidViewsHandler = _androidViewsHandler ?: return false
 
         val direction =
             checkPreconditionNotNull(focusDirection.toAndroidFocusDirection()) {
@@ -521,7 +539,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
     override val viewConfiguration: ViewConfiguration
         get() = composeViewContext.viewConfiguration
 
-    val insetsWatcher = WindowInsetsWatcher(this)
+    val insetsListener = InsetsListener(this)
 
     @OptIn(ExperimentalComposeUiApi::class)
     override val root =
@@ -560,7 +578,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
     override val semanticsOwner: SemanticsOwner =
         SemanticsOwner(root, EmptySemanticsModifier(), layoutNodes)
     private val composeAccessibilityDelegate = AndroidComposeViewAccessibilityDelegateCompat(this)
-    internal val contentCaptureManager =
+    internal var contentCaptureManager =
         AndroidContentCaptureManager(
             view = this,
             onContentCaptureSession = ::getContentCaptureSessionCompat,
@@ -677,7 +695,20 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
             return if (SDK_INT >= 30) Api30Impl.isShowingLayoutBounds(this) else field
         }
 
-    var androidViewsHandler: AndroidViewsHandler? = null
+    private var _androidViewsHandler: AndroidViewsHandler? = null
+    internal val androidViewsHandler: AndroidViewsHandler
+        get() {
+            if (_androidViewsHandler == null) {
+                _androidViewsHandler = AndroidViewsHandler(context)
+                addView(_androidViewsHandler)
+                // Ensure that AndroidViewsHandler is measured and laid out after creation, so that
+                // it can report correct bounds on screen (for semantics, etc).
+                // Normally this is done by addView, but here we disabled it for optimization
+                // purposes.
+                requestLayout()
+            }
+            return _androidViewsHandler!!
+        }
 
     private var viewLayersContainer: DrawChildContainer? = null
 
@@ -726,7 +757,17 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
     private val legacyTextInputServiceAndroid: TextInputServiceAndroid
         get() =
             _legacyTextInputServiceAndroid
-                ?: TextInputServiceAndroid(view, this).also { _legacyTextInputServiceAndroid = it }
+                ?: TextInputServiceAndroid(
+                        view,
+                        this,
+                        @OptIn(ExperimentalComposeUiApi::class)
+                        if (AndroidComposeUiFlags.isOutOfFrameSchedulerForTextInputEventsEnabled) {
+                            Executor { outOfFrameExecutor?.schedule(it::run) }
+                        } else {
+                            Executor(::postOnAnimation)
+                        },
+                    )
+                    .also { _legacyTextInputServiceAndroid = it }
 
     private var _textInputService: TextInputService? = null
     /**
@@ -992,7 +1033,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
      *   View to be laid out so that a subsequent requestLayout() call will trigger remeasurement.
      */
     private val layoutChildViewsIfNeeded: () -> Unit = {
-        androidViewsHandler?.let { viewsHandler ->
+        _androidViewsHandler?.let { viewsHandler ->
             for (i in 0 until viewsHandler.childCount) {
                 val child = viewsHandler.getChildAt(i) as? AndroidViewHolder ?: continue
                 if (child.isLayoutRequested) {
@@ -1056,19 +1097,6 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
             frameRateCategoryView = view
             addView(view)
         }
-    }
-
-    private fun ensureAndroidViewsHandler(): AndroidViewsHandler {
-        return androidViewsHandler
-            ?: AndroidViewsHandler(context).also {
-                addView(it)
-                // Ensure that AndroidViewsHandler is measured and laid out after creation, so that
-                // it can report correct bounds on screen (for semantics, etc).
-                // Normally this is done by addView, but here we disabled it for optimization
-                // purposes.
-                requestLayout()
-                androidViewsHandler = it
-            }
     }
 
     /**
@@ -1137,13 +1165,20 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
     }
 
     private val scrollCapture = if (SDK_INT >= 31) ScrollCapture() else null
-    internal val scrollCaptureInProgress: Boolean
-        get() =
-            if (SDK_INT >= 31) {
-                scrollCapture?.scrollCaptureInProgress ?: false
-            } else {
-                false
+    val scrollCaptureInProgress: Boolean
+        get() {
+            if (SDK_INT >= 31 && scrollCapture?.scrollCaptureInProgress == true) {
+                return true
             }
+            var p = parent
+            while (p != null) {
+                if (p is AndroidComposeView) {
+                    return p.scrollCaptureInProgress
+                }
+                p = p.parent
+            }
+            return false
+        }
 
     override fun onScrollCaptureSearch(
         localVisibleRect: Rect,
@@ -1560,7 +1595,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
             snapshotObserver.clearInvalidObservations()
             observationClearRequested = false
         }
-        val childAndroidViews = androidViewsHandler
+        val childAndroidViews = _androidViewsHandler
         if (childAndroidViews != null) {
             clearChildInvalidObservations(childAndroidViews)
         }
@@ -1691,7 +1726,6 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
      * hierarchy.
      */
     fun addAndroidView(view: AndroidViewHolder, layoutNode: LayoutNode) {
-        val androidViewsHandler = ensureAndroidViewsHandler()
         androidViewsHandler.holderToLayoutNode[view] = layoutNode
         androidViewsHandler.addView(view)
         androidViewsHandler.layoutNodeToHolder[layoutNode] = view
@@ -1774,7 +1808,6 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
      * hierarchy.
      */
     fun removeAndroidView(view: AndroidViewHolder) {
-        val androidViewsHandler = ensureAndroidViewsHandler()
         androidViewsHandler.removeViewInLayout(view)
         androidViewsHandler.layoutNodeToHolder.remove(
             androidViewsHandler.holderToLayoutNode.remove(view)
@@ -1784,7 +1817,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
 
     /** Called to ask the owner to draw a child Android [View] to [canvas]. */
     fun drawAndroidView(view: AndroidViewHolder, canvas: android.graphics.Canvas) {
-        androidViewsHandler?.drawView(view, canvas)
+        androidViewsHandler.drawView(view, canvas)
     }
 
     private fun scheduleMeasureAndLayout(nodeToRemeasure: LayoutNode? = null) {
@@ -1922,6 +1955,14 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
         outOfFrameRunnable.run()
     }
 
+    override fun updateSemanticsForTest() {
+        composeAccessibilityDelegate.processSemanticChangesForTest()
+    }
+
+    override fun clearCallbacks() {
+        handler.removeCallbacks(outOfFrameRunnable)
+    }
+
     override fun setUncaughtExceptionHandler(handler: RootForTest.UncaughtExceptionHandler?) {
         uncaughtExceptionHandler = handler
         measureAndLayoutDelegate.uncaughtExceptionHandler = handler
@@ -1957,8 +1998,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
             measureAndLayoutDelegate.measureOnly()
             setMeasuredDimension(root.width, root.height)
 
-            val androidViewsHandler = androidViewsHandler
-            if (androidViewsHandler != null) {
+            if (_androidViewsHandler != null) {
                 trace("AndroidOwner:androidViewMeasure") {
                     androidViewsHandler.measure(
                         MeasureSpec.makeMeasureSpec(root.width, MeasureSpec.EXACTLY),
@@ -1998,8 +2038,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
             // are currently wrong if you try to get the global(activity) coordinates -
             // View is not yet laid out.
             updatePositionCacheAndDispatch()
-            val androidViewsHandler = androidViewsHandler
-            if (androidViewsHandler != null) {
+            if (_androidViewsHandler != null) {
                 // Even if we laid out during onMeasure, we want to set the bounds of the
                 // AndroidViewsHandler for accessibility and for Views making assumptions based on
                 // the size of their ancestors. Usually the Views in the hierarchy will not
@@ -2286,6 +2325,14 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
         }
     }
 
+    suspend fun boundsUpdatesAccessibilityEventLoop() {
+        composeAccessibilityDelegate.boundsUpdatesEventLoop()
+    }
+
+    suspend fun boundsUpdatesContentCaptureEventLoop() {
+        contentCaptureManager.boundsUpdatesEventLoop()
+    }
+
     /** Walks the entire LayoutNode sub-hierarchy and marks all nodes as needing measurement. */
     private fun invalidateLayoutNodeMeasurement(node: LayoutNode) {
         measureAndLayoutDelegate.requestRemeasure(node)
@@ -2321,7 +2368,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
             showLayoutBounds = getIsShowingLayoutBounds()
         }
         if (areWindowInsetsRulersEnabled) {
-            insetsWatcher.onViewAttachedToWindow(this)
+            insetsListener.onViewAttachedToWindow(this)
         }
         if (!composeViewContextIncrementedDuringInit) {
             composeViewContext.incrementViewCount()
@@ -2393,7 +2440,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
         isAttached = false
 
         if (areWindowInsetsRulersEnabled) {
-            insetsWatcher.onViewDetachedFromWindow(this)
+            insetsListener.onViewDetachedFromWindow(this)
         }
         val frameRateCategoryView = frameRateCategoryView
         if (isArrEnabled && frameRateCategoryView != null) {
@@ -2548,6 +2595,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
     }
 
     // TODO(shepshapard): Test this method.
+    @OptIn(ExperimentalComposeUiApi::class)
     override fun dispatchTouchEvent(motionEvent: MotionEvent): Boolean {
         if (hoverExitReceived) {
             // Go ahead and send ACTION_HOVER_EXIT if this isn't an ACTION_DOWN for the same
@@ -2566,7 +2614,11 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
             return false // Bad MotionEvent. Don't handle it.
         }
 
-        if (motionEvent.actionMasked == ACTION_MOVE && !isPositionChanged(motionEvent)) {
+        if (
+            motionEvent.actionMasked == ACTION_MOVE &&
+                !isPositionChanged(motionEvent) &&
+                !ComposeUiFlags.isTriggerMoveEventsWhenLocationHasNotChangedEnabled
+        ) {
             // There was no movement from previous MotionEvent, so we don't need to dispatch this.
             // This could be a scroll event or some other non-touch event that results in an
             // ACTION_MOVE without any movement.
@@ -3100,7 +3152,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
         // dispatchHoverEvent only runs if touch exploration is enabled)
         val delegateHandled =
             composeAccessibilityDelegate.dispatchHoverEvent(event) &&
-                ComposeUiFlags.isExploreByTouchHoverHandled
+                AndroidComposeUiFlags.isExploreByTouchHoverHandled
 
         when (event.actionMasked) {
             ACTION_HOVER_EXIT -> {
@@ -3410,7 +3462,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
                                     Int::class.java,
                                 )
                     findViewByAccessibilityIdTraversalMethod.isAccessible = true
-                    findViewByAccessibilityIdTraversalMethod.invoke(this, accessibilityId) as? View
+                    findViewByAccessibilityIdTraversalMethod.invoke(view, accessibilityId) as? View
                 } else {
                     findViewByAccessibilityIdRootedAtCurrentView(accessibilityId, view)
                 }
@@ -3518,17 +3570,32 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
         LayoutModifierNode,
         TraversableNode,
         WindowInsetsRulerProvider {
-        private var _insetsProvider: WindowInsetsRulersProvider? = null
-        override val insetsProvider: WindowInsetsRulersProvider
-            get() =
-                _insetsProvider
-                    ?: WindowInsetsRulersProvider(insetsWatcher).also { _insetsProvider = it }
+        override val insetsValues: ScatterMap<Any, WindowWindowInsetsAnimationValues>
+            get() = insetsListener.insetsValues
 
-        val rulerProvider: RulerScope.(Ruler) -> Unit = { ruler ->
-            insetsProvider.provideInset(this, ruler)
+        val generation: MutableIntState
+            get() = insetsListener.generation
+
+        var previousGeneration = -1
+
+        override val cutoutRects: MutableObjectList<MutableState<Rect>>
+            get() = insetsListener.displayCutouts
+
+        override val cutoutRulers: List<RectRulers>
+            get() = insetsListener.displayCutoutRulers
+
+        override val insetsListener: InsetsListener
+            get() = this@AndroidComposeView.insetsListener
+
+        @OptIn(ExperimentalComposeUiApi::class)
+        val rulerLambda: RulerScope.() -> Unit = {
+            previousGeneration = generation.intValue // just read the value so it is observed
+            // When generation is 0, no updateInsets() has been called yet, so we don't need to
+            // provide any insets.
+            if (previousGeneration > 0 && areWindowInsetsRulersEnabled) {
+                provideWindowInsetsRulers(this@RootModifierNode)
+            }
         }
-
-        val isRulerProvided: (Ruler) -> Boolean = { ruler -> insetsProvider.isRulerProvided(ruler) }
 
         override fun MeasureScope.measure(
             measurable: Measurable,
@@ -3537,14 +3604,7 @@ internal class AndroidComposeView(context: Context, composeViewContext: ComposeV
             val placeable = measurable.measure(constraints)
             val width = placeable.width
             val height = placeable.height
-            return layout(
-                width,
-                height,
-                isRulerProvided = isRulerProvided,
-                rulerProvider = rulerProvider,
-            ) {
-                placeable.place(0, 0)
-            }
+            return layout(width, height, rulers = rulerLambda) { placeable.place(0, 0) }
         }
 
         override val traverseKey: Any

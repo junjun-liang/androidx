@@ -41,6 +41,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.xr.arcore.Anchor
 import androidx.xr.arcore.AnchorCreateSuccess
@@ -48,9 +52,11 @@ import androidx.xr.arcore.PlaneLabel
 import androidx.xr.arcore.PlaneType
 import androidx.xr.arcore.testing.ArCoreTestRule
 import androidx.xr.arcore.testing.FakePerceptionRuntime
+import androidx.xr.arcore.testing.FakePerceptionRuntimeFactory
 import androidx.xr.arcore.testing.TestPlane
 import androidx.xr.compose.platform.LocalSession
 import androidx.xr.compose.platform.SceneManager
+import androidx.xr.compose.subspace.AnchorTarget
 import androidx.xr.compose.subspace.ArDeviceTarget
 import androidx.xr.compose.subspace.FollowBehavior
 import androidx.xr.compose.subspace.FollowTarget
@@ -74,7 +80,7 @@ import androidx.xr.compose.testing.SubspaceTestingActivity
 import androidx.xr.compose.testing.assertDepthIsAtLeast
 import androidx.xr.compose.testing.assertDepthIsEqualTo
 import androidx.xr.compose.testing.assertDepthIsNotEqualTo
-import androidx.xr.compose.testing.assertEntityIsChildOf
+import androidx.xr.compose.testing.assertEntityIsDescendantOf
 import androidx.xr.compose.testing.assertHeightIsAtLeast
 import androidx.xr.compose.testing.assertHeightIsEqualTo
 import androidx.xr.compose.testing.assertHeightIsNotEqualTo
@@ -86,9 +92,9 @@ import androidx.xr.compose.testing.assertWidthIsNotEqualTo
 import androidx.xr.compose.testing.configureFakeSession
 import androidx.xr.compose.testing.onSubspaceNodeWithTag
 import androidx.xr.compose.testing.session
-import androidx.xr.compose.unit.Meter
-import androidx.xr.compose.unit.Meter.Companion.meters
 import androidx.xr.compose.unit.VolumeConstraints
+import androidx.xr.compose.unit.metersToDp
+import androidx.xr.compose.unit.roundMetersToPx
 import androidx.xr.runtime.Config
 import androidx.xr.runtime.DeviceTrackingMode
 import androidx.xr.runtime.PlaneTrackingMode
@@ -101,7 +107,7 @@ import androidx.xr.runtime.math.Pose
 import androidx.xr.runtime.math.Quaternion
 import androidx.xr.runtime.math.Vector3
 import androidx.xr.runtime.testing.math.assertPose
-import androidx.xr.scenecore.AnchorEntity
+import androidx.xr.scenecore.AnchorSpace
 import androidx.xr.scenecore.Entity
 import androidx.xr.scenecore.PlaneOrientation
 import androidx.xr.scenecore.PlaneSemanticType
@@ -110,13 +116,19 @@ import androidx.xr.scenecore.runtime.ActivitySpace
 import androidx.xr.scenecore.runtime.RenderingEntityFactory
 import androidx.xr.scenecore.runtime.SceneRuntime
 import androidx.xr.scenecore.scene
+import androidx.xr.scenecore.testing.FakeRenderingRuntime
 import androidx.xr.scenecore.testing.FakeSceneRuntime
+import androidx.xr.scenecore.testing.FakeSceneRuntimeFactory
 import com.google.common.collect.Range
 import com.google.common.truth.Truth.assertThat
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -196,10 +208,12 @@ class SubspaceTest {
         )
     }
 
-    private fun configureSessionWithDeviceTracking(): Session {
-        val result = Session.create(composeTestRule.activity, testDispatcher)
+    private fun configureSessionWithDeviceTrackingMode(
+        mode: DeviceTrackingMode = DeviceTrackingMode.SPATIAL
+    ): Session {
+        val result = runBlocking { Session.create(composeTestRule.activity, testDispatcher) }
         val session = assertIs<SessionCreateSuccess>(result).session
-        session.configure(config = session.config.copy(deviceTracking = DeviceTrackingMode.SPATIAL))
+        session.configure(Config.Builder(session.config).setDeviceTracking(mode).build())
 
         return session
     }
@@ -213,6 +227,8 @@ class SubspaceTest {
     ) {
         val arDevice = fakeRuntime.perceptionManager.arDevice
         arDevice.devicePose = arDevice.devicePose.translate(translation = offset)
+        testDispatcher.scheduler.advanceUntilIdle()
+        fakeRuntime.allowOneMoreCallToUpdate()
         advanceTimeBy(fakeRuntime, durationMs)
     }
 
@@ -339,12 +355,12 @@ class SubspaceTest {
         composeTestRule.onSubspaceNodeWithTag("panel").assertExists()
         assertThat(SceneManager.getSceneCount(composeTestRule.activity)).isEqualTo(1)
 
-        composeTestRule.session?.scene?.requestHomeSpaceMode()
+        composeTestRule.session?.scene?.requestHomeSpace()
 
         composeTestRule.onSubspaceNodeWithTag("panel").assertExists()
         assertThat(SceneManager.getSceneCount(composeTestRule.activity)).isEqualTo(1)
 
-        composeTestRule.session?.scene?.requestFullSpaceMode()
+        composeTestRule.session?.scene?.requestFullSpace()
 
         composeTestRule.onSubspaceNodeWithTag("panel").assertExists()
         assertThat(SceneManager.getSceneCount(composeTestRule.activity)).isEqualTo(1)
@@ -364,9 +380,20 @@ class SubspaceTest {
 
         assertNotNull(density)
         assertThat(density.density).isEqualTo(2f)
-        val expectedWidthPx = Meter(DefaultTestRecommendedBoxSize.WIDTH_METERS).roundToPx(density)
-        val expectedHeightPx = Meter(DefaultTestRecommendedBoxSize.HEIGHT_METERS).roundToPx(density)
-        val expectedDepthPx = Meter(DefaultTestRecommendedBoxSize.DEPTH_METERS).roundToPx(density)
+        val session = checkNotNull(composeTestRule.session) { "session must be initialized" }
+
+        val expectedWidthPx =
+            DefaultTestRecommendedBoxSize.WIDTH_METERS.roundMetersToPx(
+                session.scene.virtualPixelDensity
+            )
+        val expectedHeightPx =
+            DefaultTestRecommendedBoxSize.HEIGHT_METERS.roundMetersToPx(
+                session.scene.virtualPixelDensity
+            )
+        val expectedDepthPx =
+            DefaultTestRecommendedBoxSize.DEPTH_METERS.roundMetersToPx(
+                session.scene.virtualPixelDensity
+            )
         composeTestRule
             .onSubspaceNodeWithTag("box")
             .assertWidthIsEqualTo(
@@ -382,53 +409,61 @@ class SubspaceTest {
 
     @Test
     fun subspace_withFillMaxSize_respectsRecommendedBoxConstraints() {
-        var density: Density? = null
         configureSessionWithRecommendedBox()
         composeTestRule.setContent {
-            density = LocalDensity.current
             Subspace { SpatialBox(SubspaceModifier.fillMaxSize(1.0f).testTag("box")) {} }
         }
 
-        assertNotNull(density)
-        val expectedWidthPx =
-            with(density) { Meter(DefaultTestRecommendedBoxSize.WIDTH_METERS).roundToPx(this) }
-        val expectedHeightPx =
-            with(density) { Meter(DefaultTestRecommendedBoxSize.HEIGHT_METERS).roundToPx(this) }
-        val expectedDepthPx =
-            with(density) { Meter(DefaultTestRecommendedBoxSize.DEPTH_METERS).roundToPx(this) }
+        val density = composeTestRule.density
+        val session = checkNotNull(composeTestRule.session) { "session must be initialized" }
+
+        val expectedWidthDp =
+            DefaultTestRecommendedBoxSize.WIDTH_METERS.metersToDp(
+                density,
+                session.scene.virtualPixelDensity,
+            )
+        val expectedHeightDp =
+            DefaultTestRecommendedBoxSize.HEIGHT_METERS.metersToDp(
+                density,
+                session.scene.virtualPixelDensity,
+            )
+        val expectedDepthDp =
+            DefaultTestRecommendedBoxSize.DEPTH_METERS.metersToDp(
+                density,
+                session.scene.virtualPixelDensity,
+            )
         composeTestRule
             .onSubspaceNodeWithTag("box")
             .assertPositionInRootIsEqualTo(0.dp, 0.dp, 0.dp)
-            .assertWidthIsEqualTo(
-                with(composeTestRule.density) { expectedWidthPx.toFloat().toDp() }
-            )
-            .assertHeightIsEqualTo(
-                with(composeTestRule.density) { expectedHeightPx.toFloat().toDp() }
-            )
-            .assertDepthIsEqualTo(
-                with(composeTestRule.density) { expectedDepthPx.toFloat().toDp() }
-            )
+            .assertWidthIsEqualTo(expectedWidthDp)
+            .assertHeightIsEqualTo(expectedHeightDp)
+            .assertDepthIsEqualTo(expectedDepthDp)
     }
 
     @Test
     fun subspace_withFillMaxSizeModifierAndFraction_shouldRespectRecommendedContentBox() {
-        var density: Density? = null
         configureSessionWithRecommendedBox()
 
         composeTestRule.setContent {
-            density = LocalDensity.current
             Subspace(modifier = SubspaceModifier.fillMaxSize(0.5f)) {
                 SpatialBox(SubspaceModifier.fillMaxSize(1.0f).testTag("box")) {}
             }
         }
 
-        assertNotNull(density)
+        val session = checkNotNull(composeTestRule.session) { "session must be initialized" }
+
         val fullWidthPx =
-            with(density) { Meter(DefaultTestRecommendedBoxSize.WIDTH_METERS).roundToPx(this) }
+            DefaultTestRecommendedBoxSize.WIDTH_METERS.roundMetersToPx(
+                session.scene.virtualPixelDensity
+            )
         val fullHeightPx =
-            with(density) { Meter(DefaultTestRecommendedBoxSize.HEIGHT_METERS).roundToPx(this) }
+            DefaultTestRecommendedBoxSize.HEIGHT_METERS.roundMetersToPx(
+                session.scene.virtualPixelDensity
+            )
         val fullDepthPx =
-            with(density) { Meter(DefaultTestRecommendedBoxSize.DEPTH_METERS).roundToPx(this) }
+            DefaultTestRecommendedBoxSize.DEPTH_METERS.roundMetersToPx(
+                session.scene.virtualPixelDensity
+            )
 
         val expectedWidthPx = (fullWidthPx * 0.5f).toInt()
         val expectedHeightPx = (fullHeightPx * 0.5f).toInt()
@@ -444,7 +479,14 @@ class SubspaceTest {
     @Test
     fun subspace_whenUnbounded_withFillMaxSize_doesNotRespectConstraints() {
         composeTestRule.setContent {
-            Subspace(allowUnboundedSubspace = true) {
+            Subspace(
+                modifier =
+                    SubspaceModifier.requiredSizeIn(
+                        maxWidth = Dp.Infinity,
+                        maxHeight = Dp.Infinity,
+                        maxDepth = Dp.Infinity,
+                    )
+            ) {
                 SpatialBox(
                     SubspaceModifier.fillMaxWidth(1.0f).fillMaxHeight(1.0f).testTag("box")
                 ) {}
@@ -484,28 +526,34 @@ class SubspaceTest {
     fun subspace_whenAllowUnbounded_isUnbounded() {
         var density: Density? = null
         configureSessionWithRecommendedBox()
+        val session = checkNotNull(composeTestRule.session) { "session must be initialized" }
+
         composeTestRule.setContent {
             density = LocalDensity.current
             // This large width is explicitly bigger than the recommended box width.
             val widthLargerThanRecommendedBox =
-                with(LocalDensity.current) {
-                    Meter(DefaultTestRecommendedBoxSize.WIDTH_METERS + 1000000.0f)
-                        .roundToPx(this)
-                        .toDp()
-                }
+                (DefaultTestRecommendedBoxSize.WIDTH_METERS + 1000000.0f).metersToDp(
+                    density,
+                    session.scene.virtualPixelDensity,
+                )
             val heightLargerThanRecommendedBox =
-                with(LocalDensity.current) {
-                    Meter(DefaultTestRecommendedBoxSize.HEIGHT_METERS + 100000.0f)
-                        .roundToPx(this)
-                        .toDp()
-                }
+                (DefaultTestRecommendedBoxSize.HEIGHT_METERS + 100000.0f).metersToDp(
+                    density,
+                    session.scene.virtualPixelDensity,
+                )
             val depthLargerThanRecommendedBox =
-                with(LocalDensity.current) {
-                    Meter(DefaultTestRecommendedBoxSize.DEPTH_METERS + 100000.0f)
-                        .roundToPx(this)
-                        .toDp()
-                }
-            Subspace(allowUnboundedSubspace = true) {
+                (DefaultTestRecommendedBoxSize.DEPTH_METERS + 100000.0f).metersToDp(
+                    density,
+                    session.scene.virtualPixelDensity,
+                )
+            Subspace(
+                modifier =
+                    SubspaceModifier.requiredSizeIn(
+                        maxWidth = Dp.Infinity,
+                        maxHeight = Dp.Infinity,
+                        maxDepth = Dp.Infinity,
+                    )
+            ) {
                 SpatialPanel(
                     SubspaceModifier.width(widthLargerThanRecommendedBox)
                         .height(heightLargerThanRecommendedBox)
@@ -515,51 +563,60 @@ class SubspaceTest {
             }
         }
 
-        val recommendedWidthPx =
-            with(assertNotNull(density)) {
-                Meter(DefaultTestRecommendedBoxSize.WIDTH_METERS).roundToPx(this)
-            }
-        val recommendedHeightPx =
-            with(density) { Meter(DefaultTestRecommendedBoxSize.HEIGHT_METERS).roundToPx(this) }
-        val recommendedDepthPx =
-            with(density) { Meter(DefaultTestRecommendedBoxSize.DEPTH_METERS).roundToPx(this) }
+        checkNotNull(density) { "density is null" }
+        val recommendedWidthDp =
+            DefaultTestRecommendedBoxSize.WIDTH_METERS.metersToDp(
+                density,
+                session.scene.virtualPixelDensity,
+            )
+        val recommendedHeightDp =
+            DefaultTestRecommendedBoxSize.HEIGHT_METERS.metersToDp(
+                density,
+                session.scene.virtualPixelDensity,
+            )
+        val recommendedDepthDp =
+            DefaultTestRecommendedBoxSize.DEPTH_METERS.metersToDp(
+                density,
+                session.scene.virtualPixelDensity,
+            )
 
         composeTestRule
             .onSubspaceNodeWithTag("panel")
-            .assertWidthIsAtLeast(
-                with(composeTestRule.density) { recommendedWidthPx.toFloat().toDp() }
-            )
-            .assertHeightIsAtLeast(
-                with(composeTestRule.density) { recommendedHeightPx.toFloat().toDp() }
-            )
-            .assertDepthIsAtLeast(
-                with(composeTestRule.density) { recommendedDepthPx.toFloat().toDp() }
-            )
+            .assertWidthIsAtLeast(recommendedWidthDp)
+            .assertHeightIsAtLeast(recommendedHeightDp)
+            .assertDepthIsAtLeast(recommendedDepthDp)
     }
 
     @Test
     fun subspace_withLargerThanDefaultModifier_isConstrainedToRecommendedBox() {
         val largeSize = 500000000.dp
         configureSessionWithRecommendedBox()
-        var expectedWidth: Dp = 0.dp
-        var expectedHeight: Dp = 0.dp
-        var expectedDepth: Dp = 0.dp
+        val density = composeTestRule.density
+        val session = checkNotNull(composeTestRule.session) { "session must be initialized" }
+
+        val expectedWidth =
+            with(density) {
+                DefaultTestRecommendedBoxSize.WIDTH_METERS.roundMetersToPx(
+                        session.scene.virtualPixelDensity
+                    )
+                    .toDp()
+            }
+        val expectedHeight =
+            with(density) {
+                DefaultTestRecommendedBoxSize.HEIGHT_METERS.roundMetersToPx(
+                        session.scene.virtualPixelDensity
+                    )
+                    .toDp()
+            }
+        val expectedDepth =
+            with(density) {
+                DefaultTestRecommendedBoxSize.DEPTH_METERS.roundMetersToPx(
+                        session.scene.virtualPixelDensity
+                    )
+                    .toDp()
+            }
 
         composeTestRule.setContent {
-            val density = LocalDensity.current
-            expectedWidth =
-                with(density) {
-                    Meter(DefaultTestRecommendedBoxSize.WIDTH_METERS).roundToPx(this).toDp()
-                }
-            expectedHeight =
-                with(density) {
-                    Meter(DefaultTestRecommendedBoxSize.HEIGHT_METERS).roundToPx(this).toDp()
-                }
-            expectedDepth =
-                with(density) {
-                    Meter(DefaultTestRecommendedBoxSize.DEPTH_METERS).roundToPx(this).toDp()
-                }
-
             // The user provides a modifier bigger than the recommended box.
             Subspace(modifier = SubspaceModifier.size(largeSize)) {
                 SpatialPanel(SubspaceModifier.fillMaxSize().testTag("panel")) {}
@@ -746,11 +803,11 @@ class SubspaceTest {
 
         composeTestRule.onNodeWithTag("state").assertTextContains("3")
 
-        session.scene.requestHomeSpaceMode()
+        session.scene.requestHomeSpace()
 
         composeTestRule.onNodeWithTag("state").assertTextContains("3")
 
-        session.scene.requestFullSpaceMode()
+        session.scene.requestFullSpace()
         composeTestRule.onNodeWithText("Increment").performClick().performClick()
 
         composeTestRule.onNodeWithTag("state").assertTextContains("5")
@@ -843,7 +900,7 @@ class SubspaceTest {
 
     @Test
     fun subspace_whenSwitchingModesFromHomeSpace_retainsState() {
-        composeTestRule.configureFakeSession().scene.requestHomeSpaceMode()
+        composeTestRule.configureFakeSession().scene.requestHomeSpace()
 
         composeTestRule.setContent {
             CompositionLocalProvider {
@@ -878,7 +935,7 @@ class SubspaceTest {
         assertStateIs(0)
 
         // Switch to full space mode and verify state is preserved.
-        composeTestRule.session!!.scene.requestFullSpaceMode()
+        composeTestRule.session!!.scene.requestFullSpace()
         assertStateIs(0)
 
         // Increment the counter and verify the new state.
@@ -886,16 +943,16 @@ class SubspaceTest {
         assertStateIs(3)
 
         // Switch to home space mode and verify state is preserved.
-        composeTestRule.session!!.scene.requestHomeSpaceMode()
+        composeTestRule.session!!.scene.requestHomeSpace()
         assertStateIs(3)
 
         // Switch back to full space, increment again, and verify.
-        composeTestRule.session!!.scene.requestFullSpaceMode()
+        composeTestRule.session!!.scene.requestFullSpace()
         clickIncrement(2)
         assertStateIs(5)
 
         // Switch to home space one last time and.
-        composeTestRule.session!!.scene.requestHomeSpaceMode()
+        composeTestRule.session!!.scene.requestHomeSpace()
         assertStateIs(5)
     }
 
@@ -915,7 +972,9 @@ class SubspaceTest {
             }
         }
 
-        composeTestRule.onSubspaceNodeWithTag("Box").assertEntityIsChildOf(assertNotNull(testNode))
+        composeTestRule
+            .onSubspaceNodeWithTag("Box")
+            .assertEntityIsDescendantOf(assertNotNull(testNode))
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -935,7 +994,7 @@ class SubspaceTest {
 
         composeTestRule
             .onSubspaceNodeWithTag("innerPanel")
-            .assertEntityIsChildOf(
+            .assertEntityIsDescendantOf(
                 assertNotNull(
                     composeTestRule
                         .onSubspaceNodeWithTag("panel")
@@ -1109,7 +1168,7 @@ class SubspaceTest {
             )
         composeTestRule
             .onSubspaceNodeWithTag("innerPanel")
-            .assertEntityIsChildOf(subspaceRootContainerEntity)
+            .assertEntityIsDescendantOf(subspaceRootContainerEntity)
 
         /*
          * (0,0)
@@ -1138,11 +1197,14 @@ class SubspaceTest {
         val expectedZOffset = 0.dp
 
         val actualXOffsetMeters = subspaceRootContainerEntity.getPose().translation.x
-        val actualXOffsetDp: Dp = Meter(actualXOffsetMeters).toDp()
+        val session = checkNotNull(composeTestRule.session) { "session must be initialized" }
+        val pixelDensity = session.scene.virtualPixelDensity
+
+        val actualXOffsetDp = actualXOffsetMeters.metersToDp(composeTestRule.density, pixelDensity)
         val actualYOffsetMeters = subspaceRootContainerEntity.getPose().translation.y
-        val actualYOffsetDp: Dp = Meter(actualYOffsetMeters).toDp()
+        val actualYOffsetDp = actualYOffsetMeters.metersToDp(composeTestRule.density, pixelDensity)
         val actualZOffsetMeters = subspaceRootContainerEntity.getPose().translation.z
-        val actualZOffsetDp: Dp = Meter(actualZOffsetMeters).toDp()
+        val actualZOffsetDp = actualZOffsetMeters.metersToDp(composeTestRule.density, pixelDensity)
 
         assertThat(actualXOffsetDp).isEqualTo(expectedXOffset)
         assertThat(actualYOffsetDp).isEqualTo(expectedYOffset)
@@ -1196,7 +1258,9 @@ class SubspaceTest {
         composeTestRule
             .onSubspaceNodeWithTag("embeddedBox")
             .assertExists()
-            .assertEntityIsChildOf(checkNotNull(composeTestRule.session?.scene?.mainPanelEntity))
+            .assertEntityIsDescendantOf(
+                checkNotNull(composeTestRule.session?.scene?.mainPanelEntity)
+            )
     }
 
     @Test
@@ -1219,7 +1283,7 @@ class SubspaceTest {
         composeTestRule
             .onSubspaceNodeWithTag(embeddedSubspaceTag)
             .assertExists()
-            .assertEntityIsChildOf(
+            .assertEntityIsDescendantOf(
                 assertNotNull(
                     composeTestRule
                         .onSubspaceNodeWithTag(parentPanelTag)
@@ -1338,21 +1402,24 @@ class SubspaceTest {
     @OptIn(ExperimentalFollowingSubspaceApi::class)
     @Test
     fun followingSubspace_whenNoDeviceTracking_DoNotRender() {
-        composeTestRule.setContent {
-            FollowingSubspace(
-                target = FollowTarget.ArDevice(assertNotNull(LocalSession.current)),
-                behavior = FollowBehavior.Static,
-                modifier = SubspaceModifier.testTag("FollowingSubspace"),
-            ) {}
-        }
+        composeTestRule.session =
+            configureSessionWithDeviceTrackingMode(DeviceTrackingMode.DISABLED)
 
-        composeTestRule.onSubspaceNodeWithTag("FollowingSubspace").assertDoesNotExist()
+        assertFailsWith<IllegalStateException> {
+            composeTestRule.setContent {
+                FollowingSubspace(
+                    target = FollowTarget.ArDevice(assertNotNull(LocalSession.current)),
+                    behavior = FollowBehavior.Static,
+                    modifier = SubspaceModifier.testTag("FollowingSubspace"),
+                ) {}
+            }
+        }
     }
 
     @OptIn(ExperimentalFollowingSubspaceApi::class)
     @Test
     fun followingSubspace_whenArDeviceTightUsedTogether_DoNotRender() {
-        composeTestRule.session = configureSessionWithDeviceTracking()
+        composeTestRule.session = configureSessionWithDeviceTrackingMode()
 
         composeTestRule.setContent {
             FollowingSubspace(
@@ -1369,7 +1436,7 @@ class SubspaceTest {
     @Test
     fun followingSubspace_whenLoads_respectsDefaultOffset() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
 
             composeTestRule.setContent {
@@ -1390,13 +1457,12 @@ class SubspaceTest {
     @Test
     fun followingSubspace_withFillMaxSizeModifierAndFraction_shouldRespectRecommendedContentBox() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
 
             var density: Density? = null
 
             composeTestRule.setContent {
-                density = LocalDensity.current
                 FollowingSubspace(
                     target = FollowTarget.ArDevice(session),
                     behavior = FollowBehavior.Soft(),
@@ -1406,14 +1472,13 @@ class SubspaceTest {
                 }
             }
             testDispatcher.scheduler.advanceUntilIdle()
-
-            assertNotNull(density)
+            val pixelDensity = session.scene.virtualPixelDensity
             val fullWidthPx =
-                with(density) { Meter(DefaultTestRecommendedBoxSize.WIDTH_METERS).roundToPx(this) }
+                DefaultTestRecommendedBoxSize.WIDTH_METERS.roundMetersToPx(pixelDensity)
             val fullHeightPx =
-                with(density) { Meter(DefaultTestRecommendedBoxSize.HEIGHT_METERS).roundToPx(this) }
+                DefaultTestRecommendedBoxSize.HEIGHT_METERS.roundMetersToPx(pixelDensity)
             val fullDepthPx =
-                with(density) { Meter(DefaultTestRecommendedBoxSize.DEPTH_METERS).roundToPx(this) }
+                DefaultTestRecommendedBoxSize.DEPTH_METERS.roundMetersToPx(pixelDensity)
 
             val expectedWidthPx = (fullWidthPx * 0.5f).toInt()
             val expectedHeightPx = (fullHeightPx * 0.5f).toInt()
@@ -1429,7 +1494,7 @@ class SubspaceTest {
     @OptIn(ExperimentalFollowingSubspaceApi::class)
     @Test
     fun followingSubspace_withRequiredSizeModifier_overridesDefaultContentBox() {
-        val session = configureSessionWithDeviceTracking()
+        val session = configureSessionWithDeviceTrackingMode()
         val requiredSize = 50000.dp
 
         composeTestRule.setContent {
@@ -1451,7 +1516,7 @@ class SubspaceTest {
     @OptIn(ExperimentalFollowingSubspaceApi::class)
     @Test
     fun followingSubspace_withRequiredSizeInModifier_overridesDefaultContentBox() {
-        val session = configureSessionWithDeviceTracking()
+        val session = configureSessionWithDeviceTrackingMode()
         val requiredMaxSize = 50000.dp
 
         composeTestRule.setContent {
@@ -1480,7 +1545,7 @@ class SubspaceTest {
     @OptIn(ExperimentalFollowingSubspaceApi::class)
     fun followingSubspace_whenScaleChanges_subspaceScaleUpdates() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
 
             val fakeSceneRuntime =
@@ -1527,7 +1592,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenFollowTargetChanges_switchesTarget() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             var followTarget by mutableStateOf(FollowTarget.ArDevice(session))
@@ -1551,10 +1616,10 @@ class SubspaceTest {
             val anchorTranslation = Vector3(20.0f, 30.0f, 40.0f)
             val anchorResult = Anchor.create(session, Pose(anchorTranslation))
             val success = assertIs<AnchorCreateSuccess>(anchorResult)
-            val anchorEntity = AnchorEntity.create(session, anchor = success.anchor)
+            val anchorSpace = AnchorSpace.create(session, anchor = success.anchor)
             testDispatcher.scheduler.advanceUntilIdle()
 
-            followTarget = FollowTarget.Anchor(anchorEntity)
+            followTarget = FollowTarget.Anchor(anchorSpace)
             followBehavior = FollowBehavior.Tight
             subspaceCurrentPose = assertExistenceAndGetNodeWorldPose("FollowingSubspace")
             assertThat(subspaceCurrentPose.translation).isEqualTo(anchorTranslation)
@@ -1566,7 +1631,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenFollowBehaviorChanges_actsLikeNewBehavior() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val durationMs = 1000L
@@ -1605,7 +1670,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenStaticBehavior_OnlyMovesOnce() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
 
@@ -1638,11 +1703,11 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenFirstPoseReceived_NoAnimation() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
-            val animationTime = 2200
-            val subAnimationTime = 1500L
+            val animationTime = 2000
+            val subAnimationTime = 500L
 
             composeTestRule.setContent {
                 FollowingSubspace(
@@ -1653,12 +1718,11 @@ class SubspaceTest {
             }
 
             val unitVector = Vector3(x = 1F, y = 1F, z = 1F)
-            val arDevice = fakeRuntime.perceptionManager.arDevice
-            arDevice.devicePose = arDevice.devicePose.translate(translation = unitVector)
-
-            // TODO(b/491579552): Update unit test to use runCurrent instead of advanceTimeBy
-            testDispatcher.scheduler.advanceTimeBy(subAnimationTime)
-            fakeRuntime.allowOneMoreCallToUpdate()
+            translateDevice(
+                fakeRuntime = fakeRuntime,
+                offset = unitVector,
+                durationMs = subAnimationTime,
+            )
 
             // The first device pose should cause the subspace to instantly spawn at that location.
             // The animation durationMs parameter only affects subsequent movements.
@@ -1668,8 +1732,11 @@ class SubspaceTest {
 
             // Demonstrate how the next pose movement is not completed if adequate time is not
             // given.
-            arDevice.devicePose = arDevice.devicePose.translate(translation = unitVector)
-            advanceTimeBy(fakeRuntime, subAnimationTime)
+            translateDevice(
+                fakeRuntime = fakeRuntime,
+                offset = unitVector,
+                durationMs = subAnimationTime,
+            )
 
             subspaceTranslation =
                 assertExistenceAndGetNodeWorldPose("FollowingSubspace").translation
@@ -1684,7 +1751,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenNoDimensionsTracked_DoesNotMove() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
 
@@ -1723,7 +1790,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenDeviceTranslatesAndRotates_MatchesMovement() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val durationMs = 1000L
@@ -1754,7 +1821,7 @@ class SubspaceTest {
     // TODO: b/508337756 Modify Soft Follow tests to move twice
     fun followingSubspace_whenDeviceTranslates_MatchesMovement() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
 
@@ -1792,7 +1859,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenOnlyXTranslationTracked_OnlyXTranslationMatches() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val fakeArDevice = fakeRuntime.perceptionManager.arDevice
@@ -1827,7 +1894,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenOnlyYTranslationTracked_OnlyYTranslationMatches() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val fakeArDevice = fakeRuntime.perceptionManager.arDevice
@@ -1862,7 +1929,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenOnlyZTranslationTracked_OnlyZTranslationMatches() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val fakeArDevice = fakeRuntime.perceptionManager.arDevice
@@ -1896,7 +1963,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenDeviceRotates_MatchesMovement() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val fakeArDevice = fakeRuntime.perceptionManager.arDevice
@@ -1935,7 +2002,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenOnlyXRotationTracked_OnlyXRotationMatches() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val fakeArDevice = fakeRuntime.perceptionManager.arDevice
@@ -1976,7 +2043,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenOnlyYRotationTracked_OnlyYRotationMatches() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val fakeArDevice = fakeRuntime.perceptionManager.arDevice
@@ -2017,7 +2084,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenOnlyZRotationTracked_OnlyZRotationMatches() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val fakeArDevice = fakeRuntime.perceptionManager.arDevice
@@ -2058,7 +2125,7 @@ class SubspaceTest {
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun followingSubspace_whenTrackedDimensionsChange_MatchedDimensionsChange() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val fakeArDevice = fakeRuntime.perceptionManager.arDevice
@@ -2093,7 +2160,7 @@ class SubspaceTest {
     @OptIn(ExperimentalFollowingSubspaceApi::class)
     @Test
     fun followingSubspace_whenRemovedFromComposition_isDisposed() {
-        composeTestRule.session = configureSessionWithDeviceTracking()
+        composeTestRule.session = configureSessionWithDeviceTrackingMode()
         val session = assertNotNull(composeTestRule.session)
         var showSubspace by mutableStateOf(true)
 
@@ -2118,7 +2185,7 @@ class SubspaceTest {
     @OptIn(ExperimentalFollowingSubspaceApi::class)
     @Test
     fun followingSubspace_withFillMaxSizeAndHigherDensity_respectsConstraints() {
-        composeTestRule.session = configureSessionWithDeviceTracking()
+        composeTestRule.session = configureSessionWithDeviceTrackingMode()
         val session = assertNotNull(composeTestRule.session)
         var density: Density? = null
         composeTestRule.setContent {
@@ -2135,9 +2202,18 @@ class SubspaceTest {
 
         assertNotNull(density)
         assertThat(density.density).isEqualTo(2f)
-        val expectedWidthPx = Meter(DefaultTestRecommendedBoxSize.WIDTH_METERS).roundToPx(density)
-        val expectedHeightPx = Meter(DefaultTestRecommendedBoxSize.HEIGHT_METERS).roundToPx(density)
-        val expectedDepthPx = Meter(DefaultTestRecommendedBoxSize.DEPTH_METERS).roundToPx(density)
+        val expectedWidthPx =
+            DefaultTestRecommendedBoxSize.WIDTH_METERS.roundMetersToPx(
+                session.scene.virtualPixelDensity
+            )
+        val expectedHeightPx =
+            DefaultTestRecommendedBoxSize.HEIGHT_METERS.roundMetersToPx(
+                session.scene.virtualPixelDensity
+            )
+        val expectedDepthPx =
+            DefaultTestRecommendedBoxSize.DEPTH_METERS.roundMetersToPx(
+                session.scene.virtualPixelDensity
+            )
         composeTestRule
             .onSubspaceNodeWithTag("box")
             .assertWidthIsEqualTo(
@@ -2154,14 +2230,19 @@ class SubspaceTest {
     @OptIn(ExperimentalFollowingSubspaceApi::class)
     @Test
     fun followingSubspace_whenUnbounded_withFillMaxSize_doesNotRespectConstraints() {
-        composeTestRule.session = configureSessionWithDeviceTracking()
+        composeTestRule.session = configureSessionWithDeviceTrackingMode()
         val session = assertNotNull(composeTestRule.session)
 
         composeTestRule.setContent {
             FollowingSubspace(
                 target = FollowTarget.ArDevice(session),
                 behavior = FollowBehavior.Soft(),
-                allowUnboundedSubspace = true,
+                modifier =
+                    SubspaceModifier.requiredSizeIn(
+                        maxWidth = Dp.Infinity,
+                        maxHeight = Dp.Infinity,
+                        maxDepth = Dp.Infinity,
+                    ),
             ) {
                 SpatialBox(
                     SubspaceModifier.fillMaxWidth(1.0f).fillMaxHeight(1.0f).testTag("box")
@@ -2174,7 +2255,10 @@ class SubspaceTest {
             .assertPositionInRootIsEqualTo(
                 0.dp,
                 0.dp,
-                ArDeviceTarget.DEFAULT_OFFSET.translation.z.meters.toDp(),
+                ArDeviceTarget.DEFAULT_OFFSET.translation.z.metersToDp(
+                    composeTestRule.density,
+                    session.scene.virtualPixelDensity,
+                ),
             )
             .assertWidthIsNotEqualTo(
                 with(composeTestRule.density) { VolumeConstraints().maxWidth.toDp() }
@@ -2192,20 +2276,22 @@ class SubspaceTest {
     fun followingSubspace_whenCreated_isParentedToAnchor() {
         composeTestRule.session = composeTestRule.configureFakeSession()
         val session = assertNotNull(composeTestRule.session)
-        session.configure(Config(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL))
-        val anchorEntity =
-            AnchorEntity.create(session, FloatSize2d(), PlaneOrientation.ALL, PlaneSemanticType.ALL)
+        session.configure(
+            Config.Builder().setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL).build()
+        )
+        val anchorSpace =
+            AnchorSpace.create(session, FloatSize2d(), PlaneOrientation.ALL, PlaneSemanticType.ALL)
 
         composeTestRule.setContent {
             FollowingSubspace(
-                target = FollowTarget.Anchor(anchorEntity),
+                target = FollowTarget.Anchor(anchorSpace),
                 behavior = FollowBehavior.Tight,
             ) {
                 SpatialPanel(SubspaceModifier.fillMaxSize().testTag("panel")) {}
             }
         }
 
-        composeTestRule.onSubspaceNodeWithTag("panel").assertEntityIsChildOf(anchorEntity)
+        composeTestRule.onSubspaceNodeWithTag("panel").assertEntityIsDescendantOf(anchorSpace)
     }
 
     @Test
@@ -2213,13 +2299,15 @@ class SubspaceTest {
     fun followingSubspace_withContent_positionsAtOrigin() {
         composeTestRule.session = composeTestRule.configureFakeSession()
         val session = assertNotNull(composeTestRule.session)
-        session.configure(Config(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL))
-        val anchorEntity =
-            AnchorEntity.create(session, FloatSize2d(), PlaneOrientation.ALL, PlaneSemanticType.ALL)
+        session.configure(
+            Config.Builder().setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL).build()
+        )
+        val anchorSpace =
+            AnchorSpace.create(session, FloatSize2d(), PlaneOrientation.ALL, PlaneSemanticType.ALL)
 
         composeTestRule.setContent {
             FollowingSubspace(
-                target = FollowTarget.Anchor(anchorEntity),
+                target = FollowTarget.Anchor(anchorSpace),
                 behavior = FollowBehavior.Tight,
             ) {
                 SpatialPanel(SubspaceModifier.fillMaxSize().testTag("panel")) {}
@@ -2237,15 +2325,17 @@ class SubspaceTest {
     fun followingSubspace_whenNested_positionsRelativeToAnchor() {
         composeTestRule.session = composeTestRule.configureFakeSession()
         val session = assertNotNull(composeTestRule.session)
-        session.configure(Config(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL))
-        val anchorEntity =
-            AnchorEntity.create(session, FloatSize2d(), PlaneOrientation.ALL, PlaneSemanticType.ALL)
+        session.configure(
+            Config.Builder().setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL).build()
+        )
+        val anchorSpace =
+            AnchorSpace.create(session, FloatSize2d(), PlaneOrientation.ALL, PlaneSemanticType.ALL)
 
         composeTestRule.setContent {
             Subspace(modifier = SubspaceModifier.offset(x = 40.dp, y = 50.dp, z = 60.dp)) {
                 SpatialPanel(SubspaceModifier.fillMaxSize().testTag("subspacePanel")) {}
                 FollowingSubspace(
-                    target = FollowTarget.Anchor(anchorEntity),
+                    target = FollowTarget.Anchor(anchorSpace),
                     behavior = FollowBehavior.Tight,
                 ) {
                     SpatialPanel(
@@ -2273,14 +2363,15 @@ class SubspaceTest {
     fun followingSubspace_whenAnchoredToIdentity_positionsAtOrigin() {
         composeTestRule.session = composeTestRule.configureFakeSession()
         val session = assertNotNull(composeTestRule.session)
+        session.configure(Config.Builder().build())
 
         val anchorResult = Anchor.create(session, Pose.Identity)
         val success = assertIs<AnchorCreateSuccess>(anchorResult)
-        val anchorEntity = AnchorEntity.create(session, anchor = success.anchor)
+        val anchorSpace = AnchorSpace.create(session, anchor = success.anchor)
 
         composeTestRule.setContent {
             FollowingSubspace(
-                target = FollowTarget.Anchor(anchorEntity),
+                target = FollowTarget.Anchor(anchorSpace),
                 behavior = FollowBehavior.Tight,
             ) {
                 SpatialPanel(SubspaceModifier.fillMaxSize().testTag("panel")) {}
@@ -2298,21 +2389,22 @@ class SubspaceTest {
     fun followingSubspace_whenLocked_isPositionedCorrectly() {
         composeTestRule.session = composeTestRule.configureFakeSession()
         val session = assertNotNull(composeTestRule.session)
+        session.configure(Config.Builder().build())
 
         val anchorResult = Anchor.create(session, Pose(Vector3(20.0f, 30.0f, 40.0f)))
         val success = assertIs<AnchorCreateSuccess>(anchorResult)
-        val anchorEntity = AnchorEntity.create(session, anchor = success.anchor)
+        val anchorSpace = AnchorSpace.create(session, anchor = success.anchor)
 
         composeTestRule.setContent {
             FollowingSubspace(
-                target = FollowTarget.Anchor(anchorEntity),
+                target = FollowTarget.Anchor(anchorSpace),
                 behavior = FollowBehavior.Tight,
             ) {
                 SpatialPanel(SubspaceModifier.fillMaxSize().testTag("Panel")) {}
             }
         }
 
-        val anchorWorldPose = anchorEntity.getPose(Space.ACTIVITY)
+        val anchorWorldPose = anchorSpace.getPose(Space.ACTIVITY)
         val panelWorldPose = assertExistenceAndGetNodeWorldPose("Panel")
         assertThat(anchorWorldPose).isEqualTo(Pose(Vector3(20.0f, 30.0f, 40.0f)))
         assertThat(panelWorldPose).isEqualTo(Pose(Vector3(20.0f, 30.0f, 40.0f)))
@@ -2329,24 +2421,22 @@ class SubspaceTest {
     fun followingSubspace_whenAnchorChanges_repositions() {
         composeTestRule.session = composeTestRule.configureFakeSession()
         val session = assertNotNull(composeTestRule.session)
+        session.configure(Config.Builder().build())
 
         val initialPose = Pose(Vector3(10f, 20f, 30f), Quaternion(10f, 20f, 30f, 40f))
         val anchorResult = Anchor.create(session, initialPose)
-        val anchorEntity =
-            AnchorEntity.create(
-                session,
-                anchor = assertIs<AnchorCreateSuccess>(anchorResult).anchor,
-            )
+        val anchorSpace =
+            AnchorSpace.create(session, anchor = assertIs<AnchorCreateSuccess>(anchorResult).anchor)
 
         val updatedPose = Pose(Vector3(40f, 50f, 60f), Quaternion(15f, 25f, 35f, 45f))
         val updatedAnchorResult = Anchor.create(session, updatedPose)
-        val updatedAnchorEntity =
-            AnchorEntity.create(
+        val updatedAnchorSpace =
+            AnchorSpace.create(
                 session,
                 anchor = assertIs<AnchorCreateSuccess>(updatedAnchorResult).anchor,
             )
 
-        val currentAnchorState = mutableStateOf(anchorEntity)
+        val currentAnchorState = mutableStateOf(anchorSpace)
 
         composeTestRule.setContent {
             FollowingSubspace(
@@ -2360,7 +2450,7 @@ class SubspaceTest {
         assertThat(assertExistenceAndGetNodeWorldPose("Panel")).isEqualTo(initialPose)
         composeTestRule.onSubspaceNodeWithTag("Panel").assertPositionIsEqualTo(0.dp, 0.dp, 0.dp)
 
-        currentAnchorState.value = updatedAnchorEntity
+        currentAnchorState.value = updatedAnchorSpace
         composeTestRule.waitForIdle()
 
         assertThat(assertExistenceAndGetNodeWorldPose("Panel")).isEqualTo(updatedPose)
@@ -2372,7 +2462,7 @@ class SubspaceTest {
     @OptIn(ExperimentalFollowingSubspaceApi::class)
     fun followingSubspace_whenRecenterOccurs_reloadsSubspace() =
         runTest(testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val followingSubspaceTag = "FollowingSubspace"
@@ -2405,7 +2495,7 @@ class SubspaceTest {
     @OptIn(ExperimentalFollowingSubspaceApi::class)
     fun followingSubspace_whenTargetChanges_recenterUsesNewTarget() =
         runTest(context = testDispatcher) {
-            composeTestRule.session = configureSessionWithDeviceTracking()
+            composeTestRule.session = configureSessionWithDeviceTrackingMode()
             val session = assertNotNull(actual = composeTestRule.session)
             val fakeRuntime = session.runtimes.filterIsInstance<FakePerceptionRuntime>().first()
             val fakeSceneRuntime = session.runtimes.filterIsInstance<FakeSceneRuntime>().first()
@@ -2418,7 +2508,7 @@ class SubspaceTest {
             val anchor = (Anchor.create(session, anchorPose) as AnchorCreateSuccess).anchor
             val anchorTarget =
                 FollowTarget.Anchor(
-                    anchorEntity = assertNotNull(actual = AnchorEntity.create(session, anchor))
+                    anchorSpace = assertNotNull(actual = AnchorSpace.create(session, anchor))
                 )
 
             // Start with the Anchor as the follow target
@@ -2448,6 +2538,109 @@ class SubspaceTest {
 
             subspacePose = assertExistenceAndGetNodeWorldPose("FollowingSubspace")
             assertThat(subspacePose.translation).isEqualTo(Pose.Identity.translation)
+        }
+
+    @Test
+    @OptIn(ExperimentalFollowingSubspaceApi::class)
+    fun followingSubspace_whenDisposed_removesOriginChangedListener() {
+        composeTestRule.session = configureSessionWithDeviceTrackingMode()
+        val session = assertNotNull(composeTestRule.session)
+        val fakeSceneRuntime = session.runtimes.filterIsInstance<FakeSceneRuntime>().first()
+        var showSubspace by mutableStateOf(true)
+
+        composeTestRule.setContent {
+            if (showSubspace) {
+                FollowingSubspace(
+                    target = FollowTarget.ArDevice(session),
+                    behavior = FollowBehavior.Soft(),
+                ) {}
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        assertThat(fakeSceneRuntime.activitySpace.onOriginChangedListener).isNotNull()
+
+        showSubspace = false
+        composeTestRule.waitForIdle()
+
+        assertThat(fakeSceneRuntime.activitySpace.onOriginChangedListener).isNull()
+    }
+
+    @Test
+    @OptIn(ExperimentalFollowingSubspaceApi::class)
+    fun followingSubspace_whenDisposedAfterSessionDestroyed_doesNotCrash() {
+        val originalSceneRuntime =
+            FakeSceneRuntimeFactory().create(composeTestRule.activity).apply {
+                deviceDpPerMeter = 2000f
+            }
+        val renderingRuntime = FakeRenderingRuntime(originalSceneRuntime)
+        val perceptionRuntime =
+            FakePerceptionRuntimeFactory().createRuntime(composeTestRule.activity).apply {
+                initialize()
+            }
+        val customOwner =
+            object : LifecycleOwner {
+                override val lifecycle =
+                    LifecycleRegistry(this).apply { currentState = Lifecycle.State.RESUMED }
+            }
+
+        val session =
+            Session(
+                context = composeTestRule.activity,
+                runtimes = listOf(originalSceneRuntime, renderingRuntime, perceptionRuntime),
+                coroutineScope = kotlinx.coroutines.CoroutineScope(Dispatchers.Main.immediate),
+                lifecycleOwner = customOwner,
+            )
+        session.configure(Config(deviceTracking = DeviceTrackingMode.SPATIAL))
+        composeTestRule.session = session
+
+        // Retrieve the internal observer and register it on customOwner.lifecycle.
+        val observerField =
+            Session::class.java.getDeclaredField("lifecycleObserver").apply { isAccessible = true }
+        val lifecycleObserver = observerField.get(session) as LifecycleEventObserver
+        customOwner.lifecycle.addObserver(lifecycleObserver)
+
+        composeTestRule.setContent {
+            FollowingSubspace(
+                target = FollowTarget.ArDevice(session),
+                behavior = FollowBehavior.Soft(),
+            ) {}
+        }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.runOnUiThread {
+            (customOwner.lifecycle).handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        }
+        composeTestRule.waitForIdle()
+
+        assertThat(session.scene.activitySpace.isDisposed).isTrue()
+    }
+
+    @Test
+    @OptIn(ExperimentalFollowingSubspaceApi::class)
+    fun followingSubspace_whenAnchorSpaceDisposed_doesNotCrash() =
+        runTest(testDispatcher) {
+            composeTestRule.session = composeTestRule.configureFakeSession()
+            val session = assertNotNull(composeTestRule.session)
+            session.configure(Config.Builder().build())
+
+            val anchorResult = Anchor.create(session, Pose.Identity)
+            val success = assertIs<AnchorCreateSuccess>(anchorResult)
+            val anchorSpace = AnchorSpace.create(session, anchor = success.anchor)
+            val anchorTarget = AnchorTarget(anchorSpace)
+
+            val job = launch { anchorTarget.poseUpdates.collect {} }
+            testDispatcher.scheduler.advanceUntilIdle()
+
+            // Close the session/scene, which disposes of all entities including anchorSpace
+            session.scene.close()
+
+            assertThat(anchorSpace.isDisposed).isTrue()
+
+            // Canceling the collection coroutine triggers the awaitClose block in poseUpdates.
+            // This verifies that unregistering the listener on a disposed AnchorSpace does not
+            // crash.
+            job.cancelAndJoin()
         }
 }
 
@@ -2498,7 +2691,9 @@ class SubspaceTestWithArCoreTestRule {
             val session =
                 (Session.create(composeTestRule.activity, testDispatcher) as SessionCreateSuccess)
                     .session
-            session.configure(Config(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL))
+            session.configure(
+                Config.Builder().setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL).build()
+            )
             composeTestRule.session = session
             val initialPose =
                 Pose(Vector3(10f, 20f, 30f), Quaternion.fromEulerAngles(10f, 20f, 30f))
@@ -2509,8 +2704,8 @@ class SubspaceTestWithArCoreTestRule {
                 )
             testPlane.centerPose = initialPose
             arCoreTestRule.addTrackables(testPlane)
-            val anchorEntity =
-                AnchorEntity.create(
+            val anchorSpace =
+                AnchorSpace.create(
                     session,
                     minimumPlaneExtents = FloatSize2d(),
                     planeOrientations = PlaneOrientation.ALL,
@@ -2520,14 +2715,14 @@ class SubspaceTestWithArCoreTestRule {
 
             composeTestRule.setContent {
                 FollowingSubspace(
-                    target = FollowTarget.Anchor(assertNotNull(anchorEntity)),
+                    target = FollowTarget.Anchor(assertNotNull(anchorSpace)),
                     behavior = FollowBehavior.Tight,
                 ) {
                     SpatialPanel(SubspaceModifier.fillMaxSize().testTag("Panel")) {}
                 }
             }
 
-            assertPose(anchorEntity.getPose(Space.ACTIVITY), initialPose)
+            assertPose(anchorSpace.getPose(Space.ACTIVITY), initialPose)
             assertPose(assertExistenceAndGetNodeWorldPose("Panel"), initialPose)
             composeTestRule.onSubspaceNodeWithTag("Panel").assertPositionIsEqualTo(0.dp, 0.dp, 0.dp)
 
@@ -2536,7 +2731,7 @@ class SubspaceTestWithArCoreTestRule {
             testPlane.centerPose = updatedPose
             advanceUntilIdle()
 
-            assertPose(anchorEntity.getPose(Space.ACTIVITY), updatedPose)
+            assertPose(anchorSpace.getPose(Space.ACTIVITY), updatedPose)
             assertPose(assertExistenceAndGetNodeWorldPose("Panel"), updatedPose)
             composeTestRule.onSubspaceNodeWithTag("Panel").assertPositionIsEqualTo(0.dp, 0.dp, 0.dp)
         }
@@ -2552,14 +2747,16 @@ class SubspaceTestWithArCoreTestRule {
             val session =
                 (Session.create(composeTestRule.activity, testDispatcher) as SessionCreateSuccess)
                     .session
-            session.configure(Config(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL))
+            session.configure(
+                Config.Builder().setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL).build()
+            )
             composeTestRule.session = session
             val initialPose = Pose(Vector3(10f, 20f, 30f), Quaternion(10f, 20f, 30f, 40f))
             val testPlane = TestPlane(PlaneType.HORIZONTAL_UPWARD_FACING, PlaneLabel.FLOOR)
             testPlane.centerPose = initialPose
             arCoreTestRule.addTrackables(testPlane)
-            val anchorEntity =
-                AnchorEntity.create(
+            val anchorSpace =
+                AnchorSpace.create(
                     session,
                     minimumPlaneExtents = FloatSize2d(),
                     planeOrientations = PlaneOrientation.ALL,
@@ -2569,7 +2766,7 @@ class SubspaceTestWithArCoreTestRule {
 
             composeTestRule.setContent {
                 FollowingSubspace(
-                    target = FollowTarget.Anchor(assertNotNull(anchorEntity)),
+                    target = FollowTarget.Anchor(assertNotNull(anchorSpace)),
                     behavior = FollowBehavior.Soft(durationMs = 1000),
                 ) {
                     SpatialPanel(SubspaceModifier.fillMaxSize().testTag("Panel")) {}
@@ -2581,7 +2778,7 @@ class SubspaceTestWithArCoreTestRule {
             testPlane.centerPose = updatedPose
             advanceUntilIdle()
 
-            assertPose(anchorEntity.getPose(Space.ACTIVITY), updatedPose)
+            assertPose(anchorSpace.getPose(Space.ACTIVITY), updatedPose)
             assertPose(assertExistenceAndGetNodeWorldPose("Panel"), updatedPose)
         }
     }
@@ -2596,7 +2793,9 @@ class SubspaceTestWithArCoreTestRule {
             val session =
                 (Session.create(composeTestRule.activity, testDispatcher) as SessionCreateSuccess)
                     .session
-            session.configure(Config(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL))
+            session.configure(
+                Config.Builder().setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL).build()
+            )
             composeTestRule.session = session
             val initialPose =
                 Pose(Vector3(10f, 20f, 30f), Quaternion.fromEulerAngles(10f, 20f, 30f))
@@ -2607,8 +2806,8 @@ class SubspaceTestWithArCoreTestRule {
                 )
             testPlane.centerPose = initialPose
             arCoreTestRule.addTrackables(testPlane)
-            val anchorEntity =
-                AnchorEntity.create(
+            val anchorSpace =
+                AnchorSpace.create(
                     session,
                     minimumPlaneExtents = FloatSize2d(),
                     planeOrientations = PlaneOrientation.ALL,
@@ -2618,7 +2817,7 @@ class SubspaceTestWithArCoreTestRule {
 
             composeTestRule.setContent {
                 FollowingSubspace(
-                    target = FollowTarget.Anchor(assertNotNull(anchorEntity)),
+                    target = FollowTarget.Anchor(assertNotNull(anchorSpace)),
                     behavior = FollowBehavior.Static,
                 ) {
                     SpatialPanel(SubspaceModifier.fillMaxSize().testTag("Panel")) {}
@@ -2641,7 +2840,7 @@ class SubspaceTestWithArCoreTestRule {
 
             testDispatcher.scheduler.advanceUntilIdle()
 
-            assertThat(anchorEntity.getPose(Space.ACTIVITY)).isEqualTo(updatedPose)
+            assertThat(anchorSpace.getPose(Space.ACTIVITY)).isEqualTo(updatedPose)
 
             composeTestRule.waitForIdle()
 

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+@file:kotlin.OptIn(androidx.xr.scenecore.ExperimentalGltfAnimationApi::class)
+
 package androidx.xr.compose.testapp.splitengine
 
 import android.annotation.SuppressLint
@@ -53,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistryOwner
@@ -80,22 +83,27 @@ class SplitEngine : ComponentActivity() {
 
     private val activity = this
 
-    private val session by lazy {
-        // SplitEngine is enabled by default.
-        (Session.create(context = this) as SessionCreateSuccess).session
-    }
+    private lateinit var session: Session
 
     private var spatialEnvironmentPreference: SpatialEnvironmentPreference? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        session.scene.spatialEnvironment.preferredPassthroughOpacity = 0.0f
+        lifecycleScope.launch {
+            val sessionResult = Session.create(context = this@SplitEngine)
+            if (sessionResult is SessionCreateSuccess) {
+                session = sessionResult.session
+                session.scene.spatialEnvironment.preferredPassthroughOpacity = 0.0f
 
-        setContent {
-            var title = intent.getStringExtra("TITLE")
-            if (title == null) title = "Split Engine Test"
-            ComposeEntry(activity, title)
+                setContent {
+                    var title = intent.getStringExtra("TITLE")
+                    if (title == null) title = "Split Engine Test"
+                    ComposeEntry(activity, title)
+                }
+            } else {
+                finish()
+            }
         }
     }
 
@@ -185,13 +193,13 @@ class SplitEngine : ComponentActivity() {
                     val modifier = Modifier.weight(1F)
                     ApiButton("Toggle Passthrough", modifier) { togglePassthrough(session) }
                     ApiButton("Switch to FSM", modifier) {
-                        session.scene.requestFullSpaceMode()
+                        session.scene.requestFullSpace()
                         if (movableComponentMP.value == null) {
                             movableComponentMP.value = MovableComponent.createSystemMovable(session)
                             session.scene.mainPanelEntity.addComponent(movableComponentMP.value!!)
                         }
                     }
-                    ApiButton("Switch to HSM", modifier) { session.scene.requestHomeSpaceMode() }
+                    ApiButton("Switch to HSM", modifier) { session.scene.requestHomeSpace() }
                 }
             }
         }
@@ -325,7 +333,7 @@ class SplitEngine : ComponentActivity() {
                                     )
                             }
                             glimmerEntity.value!!
-                                .animations
+                                .getAnimations()
                                 .firstOrNull()
                                 ?.start(GltfAnimationStartOptions(shouldLoop = false))
                         }
@@ -408,13 +416,15 @@ class SplitEngine : ComponentActivity() {
                         val modifier = Modifier.weight(1F)
                         ApiButton("Animate Dragon Entity", modifier) {
                             dragonEntity.value!!
-                                .animations
+                                .getAnimations()
                                 .find { it.name == "Fast_Flying" }
                                 ?.start(GltfAnimationStartOptions(shouldLoop = false))
                         }
                         ApiButton("Loop Animate Dragon Entity", modifier) {
                             val fastFlyingAnim =
-                                dragonEntity.value!!.animations.find { it.name == "Fast_Flying" }
+                                dragonEntity.value!!.getAnimations().find {
+                                    it.name == "Fast_Flying"
+                                }
                             fastFlyingAnim?.start(GltfAnimationStartOptions(shouldLoop = true))
 
                             dragonAnimationState.value =
@@ -422,7 +432,7 @@ class SplitEngine : ComponentActivity() {
                                     ?: GltfAnimation.AnimationState.STOPPED
                         }
                         ApiButton("Stop Animate Dragon Entity", modifier) {
-                            dragonEntity.value!!.animations.forEach { anim ->
+                            dragonEntity.value!!.getAnimations().forEach { anim ->
                                 if (anim.animationState == GltfAnimation.AnimationState.PLAYING) {
                                     anim.stop()
                                 }

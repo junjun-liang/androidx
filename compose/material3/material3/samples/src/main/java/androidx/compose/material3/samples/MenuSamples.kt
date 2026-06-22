@@ -210,7 +210,7 @@ fun GroupedMenuSample() {
                     shapes = MenuDefaults.groupShape(groupIndex, groupCount),
                     interactionSource = groupInteractionSource,
                 ) {
-                    MenuDefaults.Label { Text(label) }
+                    MenuDefaults.DropdownMenuGroupLabel { Text(label) }
                     HorizontalDivider(
                         modifier = Modifier.padding(MenuDefaults.HorizontalDividerPadding)
                     )
@@ -663,7 +663,6 @@ private fun LineSpacingSubmenu(interactionSource: MutableInteractionSource) {
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun DropdownMenuButtonGroup() {
     ButtonGroup(

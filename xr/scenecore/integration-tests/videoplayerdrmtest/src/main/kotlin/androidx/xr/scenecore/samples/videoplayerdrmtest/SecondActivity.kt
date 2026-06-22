@@ -32,20 +32,19 @@ import androidx.lifecycle.lifecycleScope
 import androidx.xr.runtime.Session
 import androidx.xr.runtime.SessionCreateSuccess
 import androidx.xr.scenecore.scene
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class SecondActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         lifecycleScope.launch {
-            val session =
-                withContext(Dispatchers.IO) {
-                    (Session.create(context = this@SecondActivity) as SessionCreateSuccess).session
-                }
-
-            setContent { ActivityContent(session) }
+            val sessionResult = Session.create(context = this@SecondActivity)
+            if (sessionResult is SessionCreateSuccess) {
+                val session = sessionResult.session
+                setContent { ActivityContent(session) }
+            } else {
+                finish()
+            }
         }
     }
 
@@ -55,10 +54,10 @@ class SecondActivity : ComponentActivity() {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Button(onClick = { session.scene.requestFullSpaceMode() }) {
+            Button(onClick = { session.scene.requestFullSpace() }) {
                 Text(text = "Request FSM", fontSize = 30.sp)
             }
-            Button(onClick = { session.scene.requestHomeSpaceMode() }) {
+            Button(onClick = { session.scene.requestHomeSpace() }) {
                 Text(text = "Request HSM", fontSize = 30.sp)
             }
         }

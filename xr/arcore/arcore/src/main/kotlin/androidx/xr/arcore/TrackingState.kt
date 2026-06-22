@@ -29,9 +29,18 @@ public class TrackingState private constructor(private val value: Int) {
 
         /** Tracking has stopped for this instance and will never be resumed in the future. */
         @JvmField public val STOPPED: TrackingState = TrackingState(2)
+    }
 
-        /** Tracking is valid but the quality is degraded. */
-        @JvmField public val TRACKING_DEGRADED: TrackingState = TrackingState(3)
+    /** Returns a string representation of [TrackingState] useful for debugging. */
+    override fun toString(): String {
+        val repr =
+            when (this) {
+                TRACKING -> "TRACKING"
+                PAUSED -> "PAUSED"
+                STOPPED -> "STOPPED"
+                else -> "Unknown"
+            }
+        return "TrackingState($repr)"
     }
 
     internal fun toRuntimeTrackingState(): RTTrackingState =
@@ -39,8 +48,7 @@ public class TrackingState private constructor(private val value: Int) {
             TRACKING -> RTTrackingState.TRACKING
             PAUSED -> RTTrackingState.PAUSED
             STOPPED -> RTTrackingState.STOPPED
-            TRACKING_DEGRADED -> RTTrackingState.TRACKING_DEGRADED
-            else -> throw IllegalStateException()
+            else -> throw SOMEONE_FORGOT_TO_UPDATE_TRACKING_STATE
         }
 }
 
@@ -49,6 +57,12 @@ internal fun RTTrackingState.toTrackingState(): TrackingState =
         RTTrackingState.TRACKING -> TrackingState.TRACKING
         RTTrackingState.PAUSED -> TrackingState.PAUSED
         RTTrackingState.STOPPED -> TrackingState.STOPPED
-        RTTrackingState.TRACKING_DEGRADED -> TrackingState.TRACKING_DEGRADED
-        else -> throw IllegalStateException()
+        // TODO(b/524708667): Remove TRACKING_DEGRADED from the runtime
+        RTTrackingState.TRACKING_DEGRADED -> TrackingState.PAUSED
+        else -> throw SOMEONE_FORGOT_TO_UPDATE_TRACKING_STATE
     }
+
+private val SOMEONE_FORGOT_TO_UPDATE_TRACKING_STATE =
+    IllegalStateException(
+        "Unexpected TrackingState value. This usually means a new TrackingState value was added but not reflected in the conversion implementations."
+    )

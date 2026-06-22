@@ -17,9 +17,8 @@
 package androidx.pdf.ocr
 
 import android.graphics.Bitmap
-import android.graphics.Point
 import android.graphics.Rect
-import androidx.annotation.RestrictTo
+import androidx.annotation.WorkerThread
 import java.io.Closeable
 
 /**
@@ -28,7 +27,6 @@ import java.io.Closeable
  * Implementations should handle the complexity of OCR processing and return a structured
  * [OcrResult] that allows for spatial queries.
  */
-@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public interface OcrProvider : Closeable {
     /**
      * Processes the given [image] and returns recognized text results.
@@ -49,7 +47,6 @@ public interface OcrProvider : Closeable {
  * @property bounds A list of [Rect] objects representing the visual bounding boxes of the text. The
  *   bounds are typically aggregated by line to optimize for rendering and selection.
  */
-@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public class OcrText(public val text: String, public val bounds: List<Rect>)
 
 /**
@@ -58,43 +55,48 @@ public class OcrText(public val text: String, public val bounds: List<Rect>)
  * This interface manages the mapping between the raw recognized text and its visual coordinates in
  * the original image.
  */
-@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public interface OcrResult {
-    /** All recognized text and its corresponding bounding boxes. */
-    public val allText: OcrText
-
-    /** Whether the primary direction of the recognized text is Right-to-Left. */
-    public val isRtl: Boolean
+    /**
+     * Returns all recognized text and its corresponding bounding boxes.
+     *
+     * @return An [OcrText] object containing all recognized text in the image.
+     */
+    public fun getAllText(): OcrText
 
     /**
      * Returns the text and its bounding boxes within the selection range defined by two points.
      *
-     * The selection range is determined by finding the closest characters to the provided
-     * [startPoint] and [endPoint].
+     * The selection range is determined by finding the closest characters to the provided start and
+     * end coordinates.
      *
-     * @param startPoint The starting coordinate of the selection, relative to image dimensions.
-     * @param endPoint The ending coordinate of the selection, relative to image dimensions.
+     * @param startX The starting X coordinate, relative to image dimensions.
+     * @param startY The starting Y coordinate, relative to image dimensions.
+     * @param endX The ending X coordinate, relative to image dimensions.
+     * @param endY The ending Y coordinate, relative to image dimensions.
      * @return An [OcrText] object containing the selected text and its bounds.
      */
-    public fun getText(startPoint: Point, endPoint: Point): OcrText
+    public fun getText(startX: Int, startY: Int, endX: Int, endY: Int): OcrText
 
     /**
      * Returns the word and its bounding boxes at the specified coordinate.
      *
-     * If the [point] lies within a word, that entire word is returned. If the point is on
-     * whitespace or outside any recognized text, `null` is returned.
+     * If the ([x], [y]) coordinate lies within a word, that entire word is returned. If the point
+     * is on whitespace or outside any recognized text, `null` is returned.
      *
-     * @param point The coordinate to query, relative to image dimensions.
+     * @param x The X coordinate to query, relative to image dimensions.
+     * @param y The Y coordinate to query, relative to image dimensions.
      * @return An [OcrText] object containing the word at the point, or `null` if no word is found.
      */
-    public fun getWordAt(point: Point): OcrText?
+    public fun getWordAt(x: Int, y: Int): OcrText?
 
     /**
      * Searches for occurrences of the [searchTerm] and returns their bounding boxes.
      *
      * @param searchTerm The string to search for.
+     * @param ignoreCase `true` to ignore case when searching, `false` otherwise.
      * @return A list of lists of [Rect] objects, where each inner list represents the visual
      *   bounding boxes for one occurrence of the search term.
      */
-    public fun getSearchBounds(searchTerm: String): List<List<Rect>>
+    @WorkerThread
+    public fun getSearchBounds(searchTerm: String, ignoreCase: Boolean = true): List<List<Rect>>
 }

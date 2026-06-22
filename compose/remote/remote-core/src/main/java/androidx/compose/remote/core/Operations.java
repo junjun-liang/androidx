@@ -89,12 +89,15 @@ import androidx.compose.remote.core.operations.PathCreate;
 import androidx.compose.remote.core.operations.PathData;
 import androidx.compose.remote.core.operations.PathExpression;
 import androidx.compose.remote.core.operations.PathTween;
+import androidx.compose.remote.core.operations.PlaySound;
 import androidx.compose.remote.core.operations.ReferencedOperations;
 import androidx.compose.remote.core.operations.Rem;
 import androidx.compose.remote.core.operations.RootContentBehavior;
 import androidx.compose.remote.core.operations.RootContentDescription;
 import androidx.compose.remote.core.operations.ShaderData;
 import androidx.compose.remote.core.operations.Skip;
+import androidx.compose.remote.core.operations.SoundData;
+import androidx.compose.remote.core.operations.SoundExpression;
 import androidx.compose.remote.core.operations.TextAttribute;
 import androidx.compose.remote.core.operations.TextData;
 import androidx.compose.remote.core.operations.TextFromFloat;
@@ -131,6 +134,7 @@ import androidx.compose.remote.core.operations.layout.managers.CollapsibleColumn
 import androidx.compose.remote.core.operations.layout.managers.CollapsibleRowLayout;
 import androidx.compose.remote.core.operations.layout.managers.ColumnLayout;
 import androidx.compose.remote.core.operations.layout.managers.CoreText;
+import androidx.compose.remote.core.operations.layout.managers.Custom;
 import androidx.compose.remote.core.operations.layout.managers.FitBoxLayout;
 import androidx.compose.remote.core.operations.layout.managers.FlowLayout;
 import androidx.compose.remote.core.operations.layout.managers.ImageLayout;
@@ -305,6 +309,9 @@ public class Operations {
     public static final int MATRIX_VECTOR_MATH = 188;
     public static final int DATA_FONT = 189;
     public static final int DRAW_TO_BITMAP = 190;
+    public static final int DATA_SOUND = 169;
+    public static final int SOUND_EXPRESSION = 206;
+    public static final int PLAY_SOUND = 141;
     public static final int WAKE_IN = 191;
     public static final int ID_LOOKUP = 192;
     public static final int PATH_EXPRESSION = 193;
@@ -340,6 +347,7 @@ public class Operations {
     public static final int TEXT_STYLE = 242;
     public static final int MODIFIER_DIMENSION_CONSTRAINTS = 243;
     public static final int LAYOUT_STATE = 217;
+    public static final int LAYOUT_CUSTOM = 93;
 
     public static final int LAYOUT_IMAGE = 234;
 
@@ -407,24 +415,28 @@ public class Operations {
     static UniqueIntMap<CompanionOperation> sMapV7WidgetsExperimental;
     static UniqueIntMap<CompanionOperation> sMapV7WidgetsDeprecated;
 
+    private static final Object sLock = new Object();
+
     /** Returns true if the operation exists for the given api level */
     public static boolean valid(int opId, int apiLevel, int profiles) {
-        switch (apiLevel) {
-            case 6:
-                if (sMapV6 == null) {
-                    sMapV6 = createMapV6();
-                }
-                return sMapV6.get(opId) != null;
-            default: // 7 and above
-                if (sMapV7 == null) {
-                    sMapV7 = createMapV7(sMapV7, profiles);
-                }
-                UniqueIntMap<CompanionOperation> map = sMapV7.get(profiles);
-                if (map == null) {
-                    sMapV7 = createMapV7(sMapV7, profiles);
-                    map = sMapV7.get(profiles);
-                }
-                return map.get(opId) != null;
+        synchronized (sLock) {
+            switch (apiLevel) {
+                case 6:
+                    if (sMapV6 == null) {
+                        sMapV6 = createMapV6();
+                    }
+                    return sMapV6.get(opId) != null;
+                default: // 7 and above
+                    if (sMapV7 == null) {
+                        sMapV7 = createMapV7(sMapV7, profiles);
+                    }
+                    UniqueIntMap<CompanionOperation> map = sMapV7.get(profiles);
+                    if (map == null) {
+                        sMapV7 = createMapV7(sMapV7, profiles);
+                        map = sMapV7.get(profiles);
+                    }
+                    return map.get(opId) != null;
+            }
         }
     }
 
@@ -434,17 +446,19 @@ public class Operations {
         if (apiLevel < 6) {
             return createMapV6();
         }
-        switch (apiLevel) {
-            case 6:
-                if (sMapV6 == null) {
-                    sMapV6 = createMapV6();
-                }
-                return sMapV6;
-            default: // 7 and above
-                if (sMapV7 == null || !sMapV7.containsKey(profiles)) {
-                    sMapV7 = createMapV7(sMapV7, profiles);
-                }
-                return sMapV7.get(profiles);
+        synchronized (sLock) {
+            switch (apiLevel) {
+                case 6:
+                    if (sMapV6 == null) {
+                        sMapV6 = createMapV6();
+                    }
+                    return sMapV6;
+                default: // 7 and above
+                    if (sMapV7 == null || !sMapV7.containsKey(profiles)) {
+                        sMapV7 = createMapV7(sMapV7, profiles);
+                    }
+                    return sMapV7.get(profiles);
+            }
         }
     }
 
@@ -502,6 +516,10 @@ public class Operations {
             sMapV7AndroidXExperimental.put(MACRO_ARGUMENT, PatternArgument::read);
             sMapV7AndroidXExperimental.put(MACRO_BLOCK, PatternBlock::read);
             sMapV7AndroidXExperimental.put(MACRO_FOR_EACH, PatternForEach::read);
+            sMapV7AndroidXExperimental.put(LAYOUT_CUSTOM, Custom::read);
+            sMapV7AndroidXExperimental.put(DATA_SOUND, SoundData::read);
+            sMapV7AndroidXExperimental.put(SOUND_EXPRESSION, SoundExpression::read);
+            sMapV7AndroidXExperimental.put(PLAY_SOUND, PlaySound::read);
         }
         return sMapV7AndroidXExperimental;
     }
@@ -558,6 +576,9 @@ public class Operations {
             sMapV7WidgetsExperimental.put(MACRO_ARGUMENT, PatternArgument::read);
             sMapV7WidgetsExperimental.put(MACRO_BLOCK, PatternBlock::read);
             sMapV7WidgetsExperimental.put(MACRO_FOR_EACH, PatternForEach::read);
+            sMapV7WidgetsExperimental.put(DATA_SOUND, SoundData::read);
+            sMapV7WidgetsExperimental.put(SOUND_EXPRESSION, SoundExpression::read);
+            sMapV7WidgetsExperimental.put(PLAY_SOUND, PlaySound::read);
         }
         return sMapV7WidgetsExperimental;
     }

@@ -34,21 +34,43 @@ import androidx.compose.runtime.remember
  * expression (e.g., a concatenation).
  */
 @Stable
-public abstract class RemoteString internal constructor() : BaseRemoteState<String>() {
+public abstract class RemoteString internal constructor(cacheKey: RemoteStateCacheKey) :
+    BaseRemoteState<String>(cacheKey) {
 
-    internal enum class OperationKey {
-        Concat,
+    internal enum class OperationKey(override val precedence: Int = 100) : DebuggableOperation {
+        Concat(3),
         Substring,
         Uppercase,
         Lowercase,
         Trim,
-        SelectIfLT,
-        SelectIfLE,
-        SelectIfGT,
-        SelectIfGE,
+        SelectIfLT(0),
+        SelectIfLE(0),
+        SelectIfGT(0),
+        SelectIfGE(0),
         Length,
         IsEmpty,
-        IsNotEmpty,
+        IsNotEmpty;
+
+        override fun toDebugString(args: List<RemoteStateCacheKey>): String {
+            return when (this) {
+                Concat -> args.formatOp("+", precedence)
+                Substring -> {
+                    val obj = args[0].toOperandString(precedence)
+                    val params = args.joinToDebugString(startIndex = 1)
+                    "$obj.substring($params)"
+                }
+                Uppercase -> "${args[0].toOperandString(precedence)}.uppercase()"
+                Lowercase -> "${args[0].toOperandString(precedence)}.lowercase()"
+                Trim -> "${args[0].toOperandString(precedence)}.trim()"
+                Length -> "${args[0].toOperandString(precedence)}.length"
+                IsEmpty -> "${args[0].toOperandString(precedence)}.isEmpty"
+                IsNotEmpty -> "${args[0].toOperandString(precedence)}.isNotEmpty"
+                SelectIfLT -> args.formatSelect("<")
+                SelectIfLE -> args.formatSelect("<=")
+                SelectIfGT -> args.formatSelect(">")
+                SelectIfGE -> args.formatSelect(">=")
+            }
+        }
     }
 
     public val length: RemoteInt
@@ -493,7 +515,9 @@ public abstract class RemoteString internal constructor() : BaseRemoteState<Stri
          * @param id The remote ID.
          * @return A [RemoteString] referencing the ID.
          */
-        internal fun createForId(id: Int): RemoteString = MutableRemoteString(id)
+        @JvmStatic
+        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+        public fun createForId(id: Int): RemoteString = MutableRemoteString(id)
 
         /**
          * Creates a named [RemoteString] with an initial value.
@@ -919,9 +943,9 @@ internal fun mergeSets(a: Set<String>?, b: Set<String>?): Set<String>? {
 public class MutableRemoteString
 internal constructor(
     @get:Suppress("AutoBoxing") public override val constantValueOrNull: String?,
-    internal override val cacheKey: RemoteStateCacheKey,
+    cacheKey: RemoteStateCacheKey,
     private val lazyRemoteString: LazyRemoteString,
-) : RemoteString(), MutableRemoteState<String> {
+) : RemoteString(cacheKey), MutableRemoteState<String> {
 
     /** Create a MutableRemoteString from an existing id. */
     internal constructor(

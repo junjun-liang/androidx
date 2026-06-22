@@ -20,12 +20,12 @@ import androidx.activity.ComponentActivity
 import androidx.kruth.assertThrows
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-@OptIn(UnstableNativeResourceApi::class)
 class NativeDataExtTest {
 
     private lateinit var session: Session
@@ -42,7 +42,12 @@ class NativeDataExtTest {
         ActivityScenario.launch(ComponentActivity::class.java).use {
             it.onActivity { activity ->
                 session =
-                    (Session.create(context = activity, coroutineContext = StandardTestDispatcher())
+                    (runBlocking {
+                            Session.create(
+                                context = activity,
+                                coroutineContext = StandardTestDispatcher(),
+                            )
+                        }
                             as SessionCreateSuccess)
                         .session
 

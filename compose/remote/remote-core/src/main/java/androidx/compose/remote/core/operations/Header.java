@@ -38,6 +38,8 @@ import org.jspecify.annotations.Nullable;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -314,7 +316,29 @@ public class Header extends Operation implements RemoteComposeOperation {
 
     @Override
     public void write(@NonNull WireBuffer buffer) {
-        apply(buffer, mWidth, mHeight, mDensity, mCapabilities);
+        if (mProperties != null && mProperties.size() > 0) {
+            int size = mProperties.size();
+            short[] types = new short[size];
+            Object[] values = new Object[size];
+            List<Integer> keys = new ArrayList<>(mProperties.keySet());
+            Collections.sort(keys); // Sort for deterministic output
+            int i = 0;
+            for (Integer key : keys) {
+                types[i] = key.shortValue();
+                values[i] = mProperties.get(key);
+                i++;
+            }
+            int apiLevel = versionToApiLevel(MAJOR_VERSION, MINOR_VERSION);
+            if (apiLevel < 7) {
+                throw new IllegalStateException(
+                        "Header has properties but apiLevel is "
+                                + apiLevel
+                                + " which is less than 7");
+            }
+            apply(buffer, apiLevel, types, values);
+        } else {
+            apply(buffer, mWidth, mHeight, mDensity, mCapabilities);
+        }
     }
 
     @NonNull
@@ -383,7 +407,7 @@ public class Header extends Operation implements RemoteComposeOperation {
         return OP_CODE;
     }
 
-    /** Apply the header to the wire buffer */
+    /** Apply flat header to the wire buffer */
     public static void apply(
             @NonNull WireBuffer buffer, int width, int height, float density, long capabilities) {
         buffer.start(OP_CODE);
@@ -396,7 +420,7 @@ public class Header extends Operation implements RemoteComposeOperation {
         buffer.writeLong(capabilities);
     }
 
-    /** Apply the header to the wire buffer */
+    /** Apply map-based header (supports properties) to the wire buffer */
     public static void apply(
             @NonNull WireBuffer buffer,
             int apiLevel,
@@ -478,6 +502,9 @@ public class Header extends Operation implements RemoteComposeOperation {
             }
             majorVersion &= 0xFFFF;
             int len = stream.readInt();
+            if (len < 0 || len > Limits.MAX_TABLE_SIZE) {
+                throw new IOException("Invalid table size " + len);
+            }
             short[] types = new short[len];
             Object[] values = new Object[len];
             readMap(stream, types, values);
@@ -518,6 +545,9 @@ public class Header extends Operation implements RemoteComposeOperation {
                     break;
                 case DATA_TYPE_STRING:
                     int slen = stream.readInt();
+                    if (slen < 0 || slen > Limits.MAX_STRING_SIZE) {
+                        throw new IOException("String length exceeds limit: " + slen);
+                    }
                     byte[] data = new byte[slen];
                     stream.readFully(data);
                     values[i] = new String(data);
@@ -527,22 +557,13 @@ public class Header extends Operation implements RemoteComposeOperation {
     }
 
     /**
-     * Peeks and returns the Header api level
+     * Map major and minor version to API level.
      *
-     * @return api level, -1 if not found
+     * @param majorVersion Major version
+     * @param minorVersion Minor version
+     * @return API level, -1 if unknown
      */
-    public static int peekApiLevel(@NonNull WireBuffer buffer) {
-        if (buffer.getIndex() != 0) {
-            throw new IllegalStateException(
-                    "Invalid buffer reading position; can't read the header");
-        }
-        int headerOpId = buffer.readByte();
-        if (headerOpId != Operations.HEADER) {
-            return -1;
-        }
-        int majorVersion = buffer.readInt();
-        int minorVersion = buffer.readInt();
-        buffer.setIndex(0);
+    private static int versionToApiLevel(int majorVersion, int minorVersion) {
         if (majorVersion >= 0x10000) {
             if ((majorVersion & 0xFFFF0000) != MAGIC_NUMBER) {
                 return -1;
@@ -567,6 +588,27 @@ public class Header extends Operation implements RemoteComposeOperation {
             return 6;
         }
         return -1;
+    }
+
+    /**
+     * Peeks and returns the Header api level
+     *
+     * @return api level, -1 if not found
+     */
+    public static int peekApiLevel(@NonNull WireBuffer buffer) {
+        if (buffer.getIndex() != 0) {
+            throw new IllegalStateException(
+                    "Invalid buffer reading position; can't read the header");
+        }
+        int headerOpId = buffer.readByte();
+        if (headerOpId != Operations.HEADER) {
+            buffer.setIndex(0);
+            return -1;
+        }
+        int majorVersion = buffer.readInt();
+        int minorVersion = buffer.readInt();
+        buffer.setIndex(0);
+        return versionToApiLevel(majorVersion, minorVersion);
     }
 
     /**
@@ -598,7 +640,7 @@ public class Header extends Operation implements RemoteComposeOperation {
         } else {
             majorVersion &= 0xFFFF;
             int length = buffer.readInt();
-            if (length > Limits.MAX_TABLE_SIZE) {
+            if (length < 0 || length > Limits.MAX_TABLE_SIZE) {
                 throw new RuntimeException("Invalid table size " + length);
             }
             short[] types = new short[length];
@@ -651,6 +693,9 @@ public class Header extends Operation implements RemoteComposeOperation {
         }
         majorVersion &= 0xFFFF;
         int len = buffer.readInt();
+        if (len < 0 || len > Limits.MAX_TABLE_SIZE) {
+            throw new IOException("Invalid table size " + len);
+        }
         short[] types = new short[len];
         Object[] values = new Object[len];
         readMap(buffer, types, values);
@@ -685,7 +730,7 @@ public class Header extends Operation implements RemoteComposeOperation {
                     values[i] = buffer.readLong();
                     break;
                 case DATA_TYPE_STRING:
-                    values[i] = buffer.readUTF8();
+                    values[i] = buffer.readUTF8(Limits.MAX_STRING_SIZE);
                     break;
             }
         }
@@ -724,6 +769,10 @@ public class Header extends Operation implements RemoteComposeOperation {
                 buffer.writeShort(tag);
                 buffer.writeShort(8);
                 buffer.writeLong((Long) values[i]);
+            } else {
+                throw new IllegalArgumentException(
+                        "Unsupported property type: "
+                                + (values[i] == null ? "null" : values[i].getClass().getName()));
             }
         }
     }

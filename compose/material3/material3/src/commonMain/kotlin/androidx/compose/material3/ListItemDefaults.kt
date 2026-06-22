@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /** Contains the default values used by list items. */
 object ListItemDefaults {
@@ -47,10 +48,34 @@ object ListItemDefaults {
             bottom = InteractiveListBottomPadding,
         )
 
+    internal val InteractiveListTopPadding
+        get() =
+            if (shouldUsePrecisionPointerComponentSizing.value) {
+                12.dp
+            } else {
+                ListTokens.ItemTopSpace
+            }
+
+    internal val InteractiveListBottomPadding
+        get() =
+            if (shouldUsePrecisionPointerComponentSizing.value) {
+                12.dp
+            } else {
+                ListTokens.ItemBottomSpace
+            }
+
     /** The default elevation of a list item */
+    @Deprecated(
+        "Use `ListItemDefaults.elevation` instead",
+        replaceWith = ReplaceWith("ListItemDefaults.elevation()"),
+    )
     val Elevation: Dp = ListTokens.ItemContainerElevation
 
     /** The default shape of a list item */
+    @Deprecated(
+        "Use `ListItemDefaults.shapes` instead",
+        replaceWith = ReplaceWith("ListItemDefaults.shapes()"),
+    )
     val shape: Shape
         @Composable @ReadOnlyComposable get() = ListTokens.ItemContainerShape.value
 
@@ -221,7 +246,6 @@ object ListItemDefaults {
      * Creates a [ListItemColors] that represents the default colors for a [SegmentedListItem] in
      * different states.
      */
-    @ExperimentalMaterial3ExpressiveApi
     @Composable
     fun segmentedColors(): ListItemColors = MaterialTheme.colorScheme.defaultSegmentedListItemColors
 
@@ -261,7 +285,6 @@ object ListItemDefaults {
      * @param draggedSupportingContentColor the supporting content color of the list item when
      *   dragged.
      */
-    @ExperimentalMaterial3ExpressiveApi
     @Composable
     fun segmentedColors(
         // default
@@ -379,9 +402,7 @@ object ListItemDefaults {
      * Creates a [ListItemShapes] that represents the default shapes for a [ListItem] in different
      * states.
      */
-    @ExperimentalMaterial3ExpressiveApi
-    @Composable
-    fun shapes(): ListItemShapes = MaterialTheme.shapes.defaultListItemShapes
+    @Composable fun shapes(): ListItemShapes = MaterialTheme.shapes.defaultListItemShapes
 
     /**
      * Creates a [ListItemShapes] that represents the default shapes for a [ListItem] in different
@@ -394,7 +415,6 @@ object ListItemDefaults {
      * @param hoveredShape the shape of the list item when hovered.
      * @param draggedShape the shape of the list item when dragged.
      */
-    @ExperimentalMaterial3ExpressiveApi
     @Composable
     fun shapes(
         shape: Shape? = null,
@@ -422,7 +442,6 @@ object ListItemDefaults {
      * @param defaultShapes the default [ListItemShapes] that should be used for standalone items or
      *   items in the middle of the list.
      */
-    @ExperimentalMaterial3ExpressiveApi
     @Composable
     fun segmentedShapes(
         index: Int,
@@ -469,7 +488,6 @@ object ListItemDefaults {
         }
     }
 
-    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
     internal val Shapes.defaultListItemShapes: ListItemShapes
         get() {
             return defaultListItemShapesCached
@@ -491,7 +509,6 @@ object ListItemDefaults {
      * @param elevation the default elevation of the list item.
      * @param draggedElevation the elevation of the list item when dragged.
      */
-    @ExperimentalMaterial3ExpressiveApi
     fun elevation(
         elevation: Dp = ListTokens.ItemContainerElevation,
         draggedElevation: Dp = ListTokens.ItemDraggedContainerElevation,
@@ -499,14 +516,13 @@ object ListItemDefaults {
         ListItemElevation(elevation = elevation, draggedElevation = draggedElevation)
 
     /** The vertical space between different [SegmentedListItem]s. */
-    @ExperimentalMaterial3ExpressiveApi val SegmentedGap: Dp = ListTokens.SegmentedGap
+    val SegmentedGap: Dp = ListTokens.SegmentedGap
 
     /**
      * Returns the default vertical alignment of children content within a [ListItem]. This is
      * equivalent to [Alignment.CenterVertically] for shorter items and [Alignment.Top] for taller
      * items.
      */
-    @ExperimentalMaterial3ExpressiveApi
     @Composable
     fun verticalAlignment(): Alignment.Vertical {
         val density = LocalDensity.current
@@ -634,6 +650,7 @@ class ListItemColors(
     val draggedOverlineContentColor: Color,
     val draggedSupportingContentColor: Color,
 ) {
+    @Deprecated("Use overload with parameters for selected and dragged colors")
     constructor(
         containerColor: Color,
         headlineColor: Color,
@@ -990,7 +1007,6 @@ class ListItemColors(
  * @param hoveredShape the shape of the list item when hovered.
  * @param draggedShape the shape of the list item when dragged.
  */
-@ExperimentalMaterial3ExpressiveApi
 @Immutable
 class ListItemShapes(
     val shape: Shape,
@@ -1045,7 +1061,6 @@ class ListItemShapes(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private val ListItemShapes.hasRoundedCornerShapes: Boolean
     get() =
         shape is RoundedCornerShape &&
@@ -1055,7 +1070,6 @@ private val ListItemShapes.hasRoundedCornerShapes: Boolean
             hoveredShape is RoundedCornerShape &&
             draggedShape is RoundedCornerShape
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private val ListItemShapes.hasCornerBasedShapes: Boolean
     get() =
         shape is CornerBasedShape &&
@@ -1065,7 +1079,6 @@ private val ListItemShapes.hasCornerBasedShapes: Boolean
             hoveredShape is CornerBasedShape &&
             draggedShape is CornerBasedShape
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ListItemShapes.shapeForInteraction(
     selected: Boolean,
@@ -1100,7 +1113,6 @@ internal fun ListItemShapes.shapeForInteraction(
  * @param elevation the default elevation of the list item.
  * @param draggedElevation the elevation of the list item when dragged.
  */
-@ExperimentalMaterial3ExpressiveApi
 @Immutable
 class ListItemElevation(val elevation: Dp, val draggedElevation: Dp) {
     override fun equals(other: Any?): Boolean {

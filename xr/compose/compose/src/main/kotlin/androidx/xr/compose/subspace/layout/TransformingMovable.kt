@@ -34,6 +34,8 @@ import androidx.xr.runtime.math.Ray
 import androidx.xr.scenecore.Entity
 import androidx.xr.scenecore.EntityMoveListener
 import androidx.xr.scenecore.MovableComponent
+import androidx.xr.scenecore.PixelDensity
+import androidx.xr.scenecore.scene
 import java.util.concurrent.Executor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asExecutor
@@ -49,6 +51,22 @@ import kotlinx.coroutines.asExecutor
  * is desired, and custom gesture handling or manual state management is not required. Input events
  * used for moving in this way are consumed.
  *
+ * ### Modifier Chaining & Ordering Behavior
+ * When combining `transformingMovable` with orientation modifiers such as `rotateToLookAtUser`, the
+ * order of the modifier chain significantly affects the translation and rotation behavior:
+ * - **`transformingMovable().rotateToLookAtUser()`**: Since `transformingMovable` acts as the
+ *   parent, the drag translation is applied directly in `ActivitySpace` coordinates. The child
+ *   `rotateToLookAtUser` continuously overrides local rotation to point toward the user's head
+ *   pose. To prevent visual conflicts and jitter with the system's drag gesture orientation
+ *   handling, continuous head-tracking updates are intentionally suppressed while a system move is
+ *   ongoing. Consequently, during active dragging, the panel uses the default smooth drag
+ *   orientation, and active face-user head-tracking resumes once the drag gesture ends.
+ * - **`rotateToLookAtUser().transformingMovable()`**: Since `rotateToLookAtUser` acts as the
+ *   parent, the child `transformingMovable` translates within the parent's rotated space. As a
+ *   result, the translation offset applied by the drag is rotated by the parent's orientation,
+ *   causing the final translation of the panel in `ActivitySpace` to be mathematically rotated
+ *   relative to the straight drag path.
+ *
  * There are some limitations that should be considered when using this modifier: 1) the draggable
  * UI controls of nested composables using the [transformingMovable] modifier and [movable] modifier
  * may conflict with each other, 2) attaching multiple [transformingMovable] modifiers to the same
@@ -56,7 +74,10 @@ import kotlinx.coroutines.asExecutor
  * offset upon release. 3) It should not be used with the following composables
  * [androidx.xr.compose.subspace.SpatialExternalSurfaceHemisphere] and
  * [androidx.xr.compose.subspace.SpatialExternalSurfaceSphere] due to their similarity with the
- * system environment and not having any layout size.
+ * system environment and not having any layout size. 4) If this element has animations that affect
+ * its layout properties (e.g., offset), these animations should be stopped when a move gesture
+ * starts (detected via the [onMove] callback with [SpatialMoveEventType.Start]) to prevent
+ * rendering jitter, and can be resumed when the gesture ends ([SpatialMoveEventType.End]).
  *
  * @param enabled true if this composable should be movable. Setting this to false will remove the
  *   interactable affordance associated with the content. Disabling the modifier after movement
@@ -70,12 +91,22 @@ import kotlinx.coroutines.asExecutor
  *   automatically applies the move, this callback is strictly for monitoring changes and should not
  *   control the position. The [onMove] callback values can be used to position other sibling
  *   composables with the offset modifier. This callback reports a [SpatialMoveEvent] which will
- *   contain a [Pose]. The [Pose] contained in this event is the sum of all previous events in the
- *   move gesture.
+ *   contain a [Pose]. The [Pose] contained in this event represents the accumulated spatial
+ *   transformation (including drag translation offsets and system-calculated orientation changes)
+ *   expressed in `ActivitySpace` coordinates.
  * @sample androidx.xr.compose.samples.BasicTransformingMovableSample
  * @sample androidx.xr.compose.samples.TransformingMovableSiblingSample
  * @see movable for implementing custom movement behaviors
  */
+@Deprecated(
+    message = "This modifier is deprecated. Use movable() with MovePolicy.default() instead.",
+    replaceWith =
+        ReplaceWith(
+            "movable(enabled = enabled, movePolicy = MovePolicy.default(scaleWithDistance = scaleWithDistance, onMove = onMove))",
+            "androidx.xr.compose.subspace.layout.MovePolicy",
+            "androidx.xr.compose.subspace.layout.movable",
+        ),
+)
 public fun SubspaceModifier.transformingMovable(
     enabled: Boolean = true,
     scaleWithDistance: Boolean = true,
@@ -144,19 +175,19 @@ private class TransformingMovableNode(
     private inline val session: Session
         get() = checkNotNull(currentValueOf(LocalSession)) { "Movable requires a Session." }
 
+    private inline val pixelDensity: PixelDensity
+        get() = session.scene.virtualPixelDensity
+
     private var component: MovableComponent? = null
 
     /** The scale of this entity when it is moved. */
     private var scaleFromMovement: Float = 1.0F
 
     /** Pose based on user adjustments from MoveEvents from SceneCore. */
-    private var userPose: Pose = Pose.Identity
+    private var layoutNodeFromDraggedNodePixels: Pose = Pose.Identity
 
     /** The current layout size of this entity, captured during placement. */
     private var currentLayoutSize: IntVolumeSize = IntVolumeSize.Zero
-
-    /** The pose of this entity at the very start of the current move gesture. */
-    private var initialDragPose: Pose = Pose.Identity
 
     /** The previous pose of this entity from the last MoveEvent. */
     private var previousPose: Pose = Pose.Identity
@@ -181,7 +212,7 @@ private class TransformingMovableNode(
 
     override fun onPlaced(coordinates: SubspaceLayoutCoordinates) {
         // Update the size of the component to match the final size of the layout.
-        component?.size = coordinates.size.toDimensionsInMeters(density)
+        component?.size = coordinates.size.toDimensionsInMeters(pixelDensity)
         // Update the cached layout size of the composable.
         currentLayoutSize = coordinates.size
     }
@@ -202,7 +233,7 @@ private class TransformingMovableNode(
     ): SubspaceMeasureResult {
         val placeable = measurable.measure(constraints)
         return layout(placeable.measuredWidth, placeable.measuredHeight, placeable.measuredDepth) {
-            placeable.place(userPose)
+            placeable.place(layoutNodeFromDraggedNodePixels)
         }
     }
 
@@ -261,16 +292,16 @@ private class TransformingMovableNode(
         val event =
             SpatialMoveEvent(
                 type = SpatialMoveEventType.Start,
-                pose = initialPose.convertMetersToPixels(density),
+                pose = initialPose.metersToPx(pixelDensity),
                 scale = initialScale,
                 size = currentLayoutSize,
-                previousPose = initialPose.convertMetersToPixels(density),
+                previousPose = initialPose.metersToPx(pixelDensity),
                 previousScale = initialScale,
             )
 
-        initialDragPose = initialPose
         previousPose = initialPose
         previousScale = initialScale
+        layoutNode?.markSystemMoveOngoing(true)
 
         onMove?.invoke(event)
     }
@@ -284,13 +315,14 @@ private class TransformingMovableNode(
         val event =
             SpatialMoveEvent(
                 type = SpatialMoveEventType.Moving,
-                pose = currentPose.convertMetersToPixels(density),
+                pose = currentPose.metersToPx(pixelDensity),
                 scale = currentScale,
                 size = currentLayoutSize,
-                previousPose = previousPose.convertMetersToPixels(density),
+                previousPose = previousPose.metersToPx(pixelDensity),
                 previousScale = previousScale,
             )
 
+        updatePoseOnMoveEvent(parentFromDraggedNodeMeters = currentPose, scale = currentScale)
         previousPose = currentPose
         previousScale = currentScale
 
@@ -307,48 +339,39 @@ private class TransformingMovableNode(
         val event =
             SpatialMoveEvent(
                 type = SpatialMoveEventType.End,
-                pose = finalPose.convertMetersToPixels(density),
+                pose = finalPose.metersToPx(pixelDensity),
                 scale = finalScale,
                 size = currentLayoutSize,
-                previousPose = previousPose.convertMetersToPixels(density),
+                previousPose = previousPose.metersToPx(pixelDensity),
                 previousScale = previousScale,
             )
 
-        updatePoseOnFinalMoveEvent(initialDragPose, finalPose, finalScale)
+        updatePoseOnMoveEvent(parentFromDraggedNodeMeters = finalPose, scale = finalScale)
+
         onMove?.invoke(event)
 
-        initialDragPose = Pose.Identity
+        layoutNode?.markSystemMoveOngoing(false)
         previousPose = Pose.Identity
         previousScale = 1.0F
     }
 
     /**
-     * Called at the finale of a move event to make sure the pose isn't lost in the layout, if this
-     * CoreEntity is movable.
+     * Called during and at the finale of a move event to make sure the pose isn't lost in the
+     * layout, if this CoreEntity is movable.
      */
-    private fun updatePoseOnFinalMoveEvent(initialPose: Pose, nextPose: Pose, scale: Float) {
+    private fun updatePoseOnMoveEvent(parentFromDraggedNodeMeters: Pose, scale: Float) {
         if (!enabled) {
             return
         }
-        // SceneCore uses meters, Compose XR uses pixels.
-        val initialCorePose = initialPose.convertMetersToPixels(density)
-        val corePose = nextPose.convertMetersToPixels(density)
-        // Find the delta from the start of the move event.
-        val coreDeltaPose =
-            if (coreEntity !is CoreModelEntity) {
-                Pose(
-                    corePose.translation - initialCorePose.translation,
-                    initialCorePose.rotation.inverse * corePose.rotation,
-                )
-            } else {
-                Pose.Identity
-            }
-        userPose =
-            Pose(
-                userPose.translation + coreDeltaPose.translation,
-                userPose.rotation * coreDeltaPose.rotation,
-            )
+
+        // SceneCore uses meters, Compose XR uses pixels
+        val parentFromDraggedNodePixels = parentFromDraggedNodeMeters.metersToPx(pixelDensity)
+        val parentFromLayoutNodePixels = node.coordinator?.poseInParent ?: Pose.Identity
+        val layoutNodeFromParentPixels = parentFromLayoutNodePixels.inverse
+        layoutNodeFromDraggedNodePixels =
+            layoutNodeFromParentPixels.compose(parentFromDraggedNodePixels)
         scaleFromMovement = scale
+
         // Make sure that the pose isn't lost when using system movement
         invalidatePlacement()
         invalidateCoreEntity()

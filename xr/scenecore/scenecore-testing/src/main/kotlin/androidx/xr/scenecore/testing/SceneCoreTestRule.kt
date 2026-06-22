@@ -16,18 +16,34 @@
 
 package androidx.xr.scenecore.testing
 
+import android.media.AudioTrack
+import android.media.MediaPlayer
+import androidx.xr.scenecore.ActivityPanelEntity
 import androidx.xr.scenecore.ActivitySpace
-import androidx.xr.scenecore.AnchorEntity
+import androidx.xr.scenecore.AnchorSpace
+import androidx.xr.scenecore.BoundsComponent
 import androidx.xr.scenecore.Component
 import androidx.xr.scenecore.Entity
+import androidx.xr.scenecore.GltfModel
 import androidx.xr.scenecore.GltfModelEntity
 import androidx.xr.scenecore.ImageBasedLightingAsset
 import androidx.xr.scenecore.InteractableComponent
+import androidx.xr.scenecore.MainPanelEntity
 import androidx.xr.scenecore.MeshEntity
+import androidx.xr.scenecore.MovableComponent
+import androidx.xr.scenecore.PanelEntity
 import androidx.xr.scenecore.PerceptionSpace
+import androidx.xr.scenecore.PointerCaptureComponent
 import androidx.xr.scenecore.PositionalAudioComponent
+import androidx.xr.scenecore.ResizableComponent
+import androidx.xr.scenecore.Scene
 import androidx.xr.scenecore.SoundEffectPool
+import androidx.xr.scenecore.SoundEffectPoolComponent
+import androidx.xr.scenecore.SpatialAudioTrack
+import androidx.xr.scenecore.SpatialAudioTrackBuilder
+import androidx.xr.scenecore.SpatialEnvironment
 import androidx.xr.scenecore.SpatialWindow
+import androidx.xr.scenecore.SurfaceEntity
 import androidx.xr.scenecore.Texture
 import androidx.xr.scenecore.testing.internal.FakePerceptionSpaceScenePose
 import androidx.xr.scenecore.testing.internal.FakeRenderingRuntime
@@ -73,27 +89,33 @@ public class SceneCoreTestRule : ExternalResource() {
         return block()
     }
 
-    // TODO: b/512223711 - Add testers for specific entities/components in follow-up PRs.
     @PublishedApi
     internal fun resolveTesterInternal(entity: Entity): Any? {
         return if (entity::class == Entity::class) {
             EntityTester.create(entity)
         } else {
             when (entity) {
-                is AnchorEntity -> AnchorEntityTester.create(entity)
+                is ActivityPanelEntity -> ActivityPanelEntityTester.create(entity)
+                is AnchorSpace -> AnchorSpaceTester.create(entity)
                 is GltfModelEntity -> GltfModelEntityTester.create(entity)
                 is MeshEntity -> MeshEntityTester.create(entity)
+                is PanelEntity -> PanelEntityTester.create(entity)
+                is SurfaceEntity -> SurfaceEntityTester.create(entity)
                 else -> null
             }
         }
     }
 
-    // TODO: b/512223711 - Add testers for specific entities/components in follow-up PRs.
     @PublishedApi
     internal fun resolveTesterInternal(component: Component): Any? {
         return when (component) {
+            is BoundsComponent -> BoundsComponentTester.create(component)
             is InteractableComponent -> InteractableComponentTester.create(component)
+            is MovableComponent -> MovableComponentTester.create(component)
+            is PointerCaptureComponent -> PointerCaptureComponentTester.create(component)
             is PositionalAudioComponent -> PositionalAudioComponentTester.create(component)
+            is ResizableComponent -> ResizableComponentTester.create(component)
+            is SoundEffectPoolComponent -> SoundEffectPoolComponentTester.create(component)
             else -> null
         }
     }
@@ -161,6 +183,37 @@ public class SceneCoreTestRule : ExternalResource() {
     }
 
     /**
+     * Retrieves a test data accessor for the given [GltfModel].
+     *
+     * In the test environment, each model created via [GltfModel.create] has corresponding
+     * underlying fake data. This function provides access to that fake data, allowing for
+     * verification or manipulation in tests.
+     *
+     * @param gltfModel The [GltfModel] instance for which to retrieve test data.
+     * @return A [GltfModelTester] instance used to inspect and manipulate the test data.
+     */
+    public fun createTester(gltfModel: GltfModel): GltfModelTester {
+        return GltfModelTester.create(gltfModel)
+    }
+
+    /**
+     * Creates the test data accessor for the given [MediaPlayer].
+     *
+     * This class provides a mechanism for tests to inspect and verify spatial audio attributes
+     * associated with a [MediaPlayer] that are otherwise encapsulated within the SceneCore runtime.
+     *
+     * @param mediaPlayer The [MediaPlayer] audio attributes are associated with.
+     * @return A [SpatialMediaPlayerTester] instance used to inspect and manipulate the test data.
+     */
+    public fun createTester(mediaPlayer: MediaPlayer): SpatialMediaPlayerTester {
+        val rtInstance = requireRuntimesReady {
+            requireNotNull(FakeSceneRuntime.instance).mediaPlayerExtensionsWrapper
+        }
+
+        return SpatialMediaPlayerTester(rtInstance, mediaPlayer)
+    }
+
+    /**
      * Creates a test data accessor for the given [ImageBasedLightingAsset].
      *
      * In the test environment, each asset created via [ImageBasedLightingAsset.createFromZip] has
@@ -199,6 +252,27 @@ public class SceneCoreTestRule : ExternalResource() {
      * @return A [TextureTester] instance used to inspect and manipulate the test data.
      */
     public fun createTester(texture: Texture): TextureTester = TextureTester.create(texture)
+
+    private var _sceneTester: SceneTester? = null
+
+    /**
+     * Provides access to a controller for simulating runtime spatial states of the [Scene].
+     *
+     * Use this to test how your application responds to changes in various spatial-related runtime
+     * states, such as visibility, capability and so on.
+     */
+    public val sceneTester: SceneTester
+        get() {
+            if (_sceneTester != null) {
+                return _sceneTester!!
+            }
+
+            _sceneTester = requireRuntimesReady {
+                SceneTester(requireNotNull(FakeSceneRuntime.instance))
+            }
+
+            return _sceneTester!!
+        }
 
     private var _activitySpaceTester: ActivitySpaceTester? = null
 
@@ -250,6 +324,76 @@ public class SceneCoreTestRule : ExternalResource() {
             return _perceptionSpaceTester!!
         }
 
+    private var _mainPanelEntityTester: MainPanelEntityTester? = null
+
+    /**
+     * Provides the test-only accessor for [MainPanelEntity] that enables direct manipulation and
+     * inspection of its internal state.
+     */
+    public val mainPanelEntityTester: MainPanelEntityTester
+        get() {
+            if (_mainPanelEntityTester != null) {
+                return _mainPanelEntityTester!!
+            }
+
+            _mainPanelEntityTester = requireRuntimesReady {
+                MainPanelEntityTester.create(requireNotNull(FakeSceneRuntime.instance))
+            }
+
+            return _mainPanelEntityTester!!
+        }
+
+    private var _spatialAudioTrackTester: SpatialAudioTrackTester? = null
+
+    /**
+     * Provides the test data accessor for the [SpatialAudioTrack].
+     *
+     * This class provides a mechanism for tests to inspect and verify spatial audio attributes
+     * associated with an [AudioTrack] that are otherwise encapsulated within the SceneCore runtime.
+     */
+    public val spatialAudioTrackTester: SpatialAudioTrackTester
+        get() {
+            if (_spatialAudioTrackTester != null) {
+                return _spatialAudioTrackTester!!
+            }
+
+            _spatialAudioTrackTester = requireRuntimesReady {
+                val rtInstance =
+                    requireNotNull(FakeSceneRuntime.instance).audioTrackExtensionsWrapper
+                SpatialAudioTrackTester(rtInstance)
+            }
+
+            return _spatialAudioTrackTester!!
+        }
+
+    private var _spatialAudioTrackBuilderTester: SpatialAudioTrackBuilderTester? = null
+
+    /**
+     * Provides the test data accessor for the [SpatialAudioTrackBuilder].
+     *
+     * This class provides a mechanism for tests to inspect and verify spatial audio attributes
+     * associated with an [AudioTrack.Builder] that are otherwise encapsulated within the SceneCore
+     * runtime.
+     */
+    public val spatialAudioTrackBuilderTester: SpatialAudioTrackBuilderTester
+        get() {
+            if (_spatialAudioTrackBuilderTester != null) {
+                return _spatialAudioTrackBuilderTester!!
+            }
+
+            _spatialAudioTrackBuilderTester = requireRuntimesReady {
+                val rtInstance =
+                    requireNotNull(FakeSceneRuntime.instance).audioTrackExtensionsWrapper
+                SpatialAudioTrackBuilderTester(rtInstance)
+            }
+
+            return _spatialAudioTrackBuilderTester!!
+        }
+
+    /** The test data accessor for the [SpatialEnvironment]. */
+    public val spatialEnvironmentTester: SpatialEnvironmentTester
+        get() = requireRuntimesReady { SpatialEnvironmentTester.instance }
+
     /** Provides the [SpatialWindowTester] test data accessor for the [SpatialWindow]. */
     public val spatialWindowTester: SpatialWindowTester
         get() = requireRuntimesReady { SpatialWindowTester.instance }
@@ -276,14 +420,22 @@ public class SceneCoreTestRule : ExternalResource() {
     @Suppress("GenericException")
     @Throws(Throwable::class)
     override fun before() {
+        _sceneTester = null
         _activitySpaceTester = null
         _perceptionSpaceTester = null
+        _spatialAudioTrackTester = null
+        _spatialAudioTrackBuilderTester = null
         _spatialSoundPoolTester = null
+        _mainPanelEntityTester = null
     }
 
     override fun after() {
+        _sceneTester = null
         _activitySpaceTester = null
         _perceptionSpaceTester = null
+        _spatialAudioTrackTester = null
+        _spatialAudioTrackBuilderTester = null
         _spatialSoundPoolTester = null
+        _mainPanelEntityTester = null
     }
 }

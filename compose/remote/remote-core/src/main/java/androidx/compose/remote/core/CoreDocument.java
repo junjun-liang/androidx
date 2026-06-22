@@ -183,7 +183,7 @@ public class CoreDocument implements Serializable {
 
     private boolean mIsUpdateDoc = false;
     private int mHostExceptionID = 0;
-    private int mBitmapMemory = 0;
+    private long mBitmapMemory = 0;
 
     @Nullable public PatternCallback mPatternCallback;
 
@@ -784,7 +784,7 @@ public class CoreDocument implements Serializable {
      *
      * @return the bitmap memory used by the document
      */
-    public int bitmapMemory() {
+    public long bitmapMemory() {
         return mBitmapMemory;
     }
 
@@ -842,6 +842,67 @@ public class CoreDocument implements Serializable {
             visitor.visit(op);
         }
     }
+
+    // ============== Sound support ==================
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    public interface SoundEngine {
+        /**
+         * Load sound data under the given sound ID. Accepts WAV bytes (from
+         * {@link androidx.compose.remote.core.operations.utilities.ToneSynthesizer}) or
+         * SC-format bytes (from {@link androidx.compose.remote.core.operations.SoundData}).
+         *
+         * @param soundId the ID to register
+         * @param data    WAV or SC-format audio bytes
+         */
+        void loadSound(int soundId, byte @NonNull [] data);
+
+        /**
+         * Trigger playback of a previously loaded sound.
+         *
+         * @param soundId the ID of the sound to play
+         */
+        void playSound(int soundId);
+    }
+
+    private @Nullable SoundEngine mSoundEngine;
+    /** cache sound so data can come before engine */
+    private IntMap<byte[]> mSoundDataPreloadCache = null;
+
+    /** Set the sound engine to use for playback. */
+    public void setSoundEngine(@NonNull SoundEngine engine) {
+        mSoundEngine = engine;
+        IntMap<byte[]> cache =  mSoundDataPreloadCache;
+        if (cache != null) {
+            for (int soundId : cache.keySet()) {
+                byte[] data = mSoundDataPreloadCache.get(soundId);
+                if (data != null) {
+                    mSoundEngine.loadSound(soundId, data);
+                }
+                mSoundDataPreloadCache.remove(soundId);
+            }
+            mSoundDataPreloadCache = null;
+        }
+    }
+    /** Dispatch loadSound to the SoundEngine if one is set. */
+    public void loadSound(int soundId, byte @NonNull [] data) {
+        if (mSoundEngine != null) {
+            mSoundEngine.loadSound(soundId, data);
+        } else {
+            if (mSoundDataPreloadCache == null) {
+                mSoundDataPreloadCache = new IntMap<>();
+            }
+            mSoundDataPreloadCache.put(soundId, data);
+        }
+    }
+
+    /** Dispatch playSound to the SoundEngine if one is set. */
+    public void playSound(int soundId) {
+        if (mSoundEngine != null) {
+            mSoundEngine.playSound(soundId);
+        }
+    }
+
+    // ============== Sound support ==================
 
     // ============== Haptic support ==================
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
@@ -1240,6 +1301,10 @@ public class CoreDocument implements Serializable {
                 document.onBitmapData((BitmapData) o);
             }
             if (o instanceof Container) {
+                if (containers.size() >= Limits.MAX_NESTING_DEPTH) {
+                    throw new RuntimeException("Maximum container nesting depth of "
+                            + Limits.MAX_NESTING_DEPTH + " exceeded");
+                }
                 Container container = (Container) o;
                 if (container instanceof Component) {
                     Component component = (Component) container;
@@ -1601,6 +1666,9 @@ public class CoreDocument implements Serializable {
         return handled;
     }
 
+    private int mClickReentrancyDepth = 0;
+    private static final int MAX_CLICK_REENTRANCY_DEPTH = 128;
+
     /**
      * Programmatically trigger the click response for the given id
      *
@@ -1610,23 +1678,31 @@ public class CoreDocument implements Serializable {
      * @return true if handled
      */
     public boolean performClick(@NonNull RemoteContext context, int id, @NonNull String metadata) {
-        if (context.isBasicDebug()) {
-            System.out.println("[RC] performClick for " + id);
+        if (mClickReentrancyDepth > MAX_CLICK_REENTRANCY_DEPTH) {
+            throw new RuntimeException("Maximum click re-entrancy depth exceeded");
         }
-        for (ClickAreaRepresentation clickArea : mClickAreas) {
-            if (clickArea.mId == id) {
-                warnClickListeners(clickArea);
-                return true;
+        mClickReentrancyDepth++;
+        try {
+            if (context.isBasicDebug()) {
+                System.out.println("[RC] performClick for " + id);
             }
-        }
+            for (ClickAreaRepresentation clickArea : mClickAreas) {
+                if (clickArea.mId == id) {
+                    warnClickListeners(clickArea);
+                    return true;
+                }
+            }
 
-        notifyOfException(id, metadata);
+            notifyOfException(id, metadata);
 
-        Component component = getComponent(id);
-        if (component != null) {
-            return component.onClick(context, this, -1, -1);
+            Component component = getComponent(id);
+            if (component != null) {
+                return component.onClick(context, this, -1, -1);
+            }
+            return false;
+        } finally {
+            mClickReentrancyDepth--;
         }
-        return false;
     }
 
     /**

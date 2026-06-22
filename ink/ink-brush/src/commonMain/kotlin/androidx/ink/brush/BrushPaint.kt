@@ -485,7 +485,8 @@ private constructor(
             )
         })
 
-        public val clientTextureId: String = TextureLayerNative.getClientTextureId(nativePointer)
+        /** The client texture ID for this texture layer. */
+        public val clientTextureId: String = TilingTextureNative.getClientTextureId(nativePointer)
 
         // Caching the native accessors here even for primitive fields because these are accessed
         // mostly
@@ -753,7 +754,7 @@ private constructor(
 
             /**
              * Constructs a [TilingTexture], taking a callback that heap-allocates a C++
-             * `BrushPaint::TextureLayer` with `BrushPaint::TextureMapping::kStamping`.
+             * `BrushPaint::TextureLayer` that holds a `BrushPaint::TilingTexture`.
              */
             @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
             public fun wrapNative(nativeAlloc: () -> Long): TilingTexture =
@@ -876,11 +877,12 @@ private constructor(
             )
         })
 
+        /** The client texture ID for this texture layer. */
+        public val clientTextureId: String = StampingTextureNative.getClientTextureId(nativePointer)
+
         // Caching the native accessors here even for primitive fields because these are accessed
         // mostly
         // in Kotlin.
-
-        public val clientTextureId: String = TextureLayerNative.getClientTextureId(nativePointer)
 
         @get:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) // FutureJetpackApi
         @IntRange(from = 1, to = 1 shl 24)
@@ -1093,7 +1095,7 @@ private constructor(
 
             /**
              * Constructs a [StampingTexture], taking a callback that heap-allocates a C++
-             * `BrushPaint::TextureLayer` with `BrushPaint::TextureMapping::kStamping`.
+             * `BrushPaint::TextureLayer` that holds a `BrushPaint::StampingTexture`.
              */
             @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
             public fun wrapNative(nativeAlloc: () -> Long): StampingTexture =
@@ -1106,9 +1108,23 @@ private constructor(
 
         internal val nativePointer: Long by NativePointer(nativeAlloc, ColorFunctionNative::free)
 
-        /** Transforms the input color into a new color. */
+        /**
+         * Transforms the input color into a new color. [color] must be in an Ink-supported color
+         * space (this is guaranteed to be the case if [color] is coming from a [Brush]).
+         */
         @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-        public abstract fun transformComposeColor(color: ComposeColor): ComposeColor
+        public open fun transformComposeColor(color: ComposeColor): ComposeColor =
+            ComposeColor(
+                ColorFunctionNative.computeTransformedColorLong(
+                        nativePointer,
+                        color.red,
+                        color.green,
+                        color.blue,
+                        color.alpha,
+                        color.colorSpace.toInkColorSpaceId(),
+                    )
+                    .toULong()
+            )
 
         /** Transforms the input color into a new color. */
         @ColorInt
@@ -1124,7 +1140,10 @@ private constructor(
             public fun wrapNative(parametersType: Int, nativeAlloc: () -> Long): ColorFunction =
                 when (parametersType) {
                     0 -> OpacityMultiplier(nativeAlloc)
-                    1 -> ReplaceColor(nativeAlloc)
+                    1 -> HueOffset(nativeAlloc)
+                    2 -> SaturationMultiplier(nativeAlloc)
+                    3 -> LuminosityOffset(nativeAlloc)
+                    4 -> ReplaceColor(nativeAlloc)
                     else -> throw IllegalArgumentException("Invalid color function type")
                 }
         }
@@ -1143,6 +1162,9 @@ private constructor(
             public val multiplier: Float
                 get() = ColorFunctionNative.getOpacityMultiplier(nativePointer)
 
+            // This override is functionally equivalent to the base class implementation, but faster
+            // since
+            // it avoids converting between [ComposeColor] and the C++ `ink::Color` type.
             @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
             override fun transformComposeColor(color: ComposeColor): ComposeColor =
                 color.copy(alpha = color.alpha * multiplier)
@@ -1157,6 +1179,95 @@ private constructor(
             override fun hashCode(): Int = multiplier.hashCode()
 
             override fun toString(): String = "ColorFunction.OpacityMultiplier($multiplier)"
+
+            // Declared to make extension functions available.
+            public companion object
+        }
+
+        /** A [ColorFunction] that shifts the color hue by a specified offset. */
+        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) // FutureJetpackApi
+        public class HueOffset internal constructor(nativeAlloc: () -> Long) :
+            ColorFunction(nativeAlloc) {
+
+            /** Constructs a color function that applies the specified hue offset. */
+            public constructor(
+                @AngleDegreesFloat offsetDegrees: Float
+            ) : this({ ColorFunctionNative.createHueOffset(offsetDegrees) })
+
+            /** The hue offset to apply. */
+            @get:AngleDegreesFloat
+            public val offsetDegrees: Float
+                get() = ColorFunctionNative.getHueOffsetDegrees(nativePointer)
+
+            override fun equals(other: Any?): Boolean {
+                if (other == null || other !is HueOffset) {
+                    return false
+                }
+                return offsetDegrees == other.offsetDegrees
+            }
+
+            override fun hashCode(): Int = offsetDegrees.hashCode()
+
+            override fun toString(): String = "ColorFunction.HueOffset($offsetDegrees)"
+
+            // Declared to make extension functions available.
+            public companion object
+        }
+
+        /** A [ColorFunction] that scales the color saturation by a specified multiplier. */
+        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) // FutureJetpackApi
+        public class SaturationMultiplier internal constructor(nativeAlloc: () -> Long) :
+            ColorFunction(nativeAlloc) {
+
+            /** Constructs a color function that applies the specified saturation multiplier. */
+            public constructor(
+                @FloatRange(from = 0.0) multiplier: Float
+            ) : this({ ColorFunctionNative.createSaturationMultiplier(multiplier) })
+
+            /** The saturation multiplier to apply. */
+            @get:FloatRange(from = 0.0)
+            public val multiplier: Float
+                get() = ColorFunctionNative.getSaturationMultiplier(nativePointer)
+
+            override fun equals(other: Any?): Boolean {
+                if (other == null || other !is SaturationMultiplier) {
+                    return false
+                }
+                return multiplier == other.multiplier
+            }
+
+            override fun hashCode(): Int = multiplier.hashCode()
+
+            override fun toString(): String = "ColorFunction.SaturationMultiplier($multiplier)"
+
+            // Declared to make extension functions available.
+            public companion object
+        }
+
+        /** A [ColorFunction] that shifts the color luminosity by a specified offset. */
+        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) // FutureJetpackApi
+        public class LuminosityOffset internal constructor(nativeAlloc: () -> Long) :
+            ColorFunction(nativeAlloc) {
+
+            /** Constructs a color function that applies the specified luminosity offset. */
+            public constructor(
+                offset: Float
+            ) : this({ ColorFunctionNative.createLuminosityOffset(offset) })
+
+            /** The luminosity offset to apply. */
+            public val offset: Float
+                get() = ColorFunctionNative.getLuminosityOffset(nativePointer)
+
+            override fun equals(other: Any?): Boolean {
+                if (other == null || other !is LuminosityOffset) {
+                    return false
+                }
+                return offset == other.offset
+            }
+
+            override fun hashCode(): Int = offset.hashCode()
+
+            override fun toString(): String = "ColorFunction.LuminosityOffset($offset)"
 
             // Declared to make extension functions available.
             public companion object
@@ -1186,6 +1297,9 @@ private constructor(
             public val colorIntArgb: Int
                 @ColorInt get(): Int = internalColor.toArgb()
 
+            // This override is functionally equivalent to the base class implementation, but faster
+            // since
+            // it avoids converting between [ComposeColor] and the C++ `ink::Color` type.
             @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
             override fun transformComposeColor(color: ComposeColor): ComposeColor =
                 this.internalColor
@@ -1282,8 +1396,6 @@ expect internal object BrushPaintNative {
 }
 
 expect internal object TextureLayerNative {
-    fun getClientTextureId(nativePointer: Long): String
-
     fun getMappingInt(nativePointer: Long): Int
 
     fun getBlendModeInt(nativePointer: Long): Int
@@ -1305,6 +1417,8 @@ expect internal object TilingTextureNative {
         wrapY: Int,
         blendMode: Int,
     ): Long
+
+    fun getClientTextureId(nativePointer: Long): String
 
     fun getSizeX(nativePointer: Long): Float
 
@@ -1335,6 +1449,8 @@ expect internal object StampingTextureNative {
         blendMode: Int,
     ): Long
 
+    fun getClientTextureId(nativePointer: Long): String
+
     fun getAnimationFrames(nativePointer: Long): Int
 
     fun getAnimationRows(nativePointer: Long): Int
@@ -1348,6 +1464,12 @@ expect internal object ColorFunctionNative {
 
     fun createOpacityMultiplier(multiplier: Float): Long
 
+    fun createHueOffset(offsetDegrees: Float): Long
+
+    fun createSaturationMultiplier(multiplier: Float): Long
+
+    fun createLuminosityOffset(offset: Float): Long
+
     fun createReplaceColor(
         colorRed: Float,
         colorGreen: Float,
@@ -1360,5 +1482,20 @@ expect internal object ColorFunctionNative {
 
     fun getOpacityMultiplier(nativePointer: Long): Float
 
+    fun getHueOffsetDegrees(nativePointer: Long): Float
+
+    fun getSaturationMultiplier(nativePointer: Long): Float
+
+    fun getLuminosityOffset(nativePointer: Long): Float
+
     fun computeReplaceColorLong(nativePointer: Long): Long
+
+    fun computeTransformedColorLong(
+        nativePointer: Long,
+        colorRed: Float,
+        colorGreen: Float,
+        colorBlue: Float,
+        colorAlpha: Float,
+        colorSpace: Int,
+    ): Long
 }

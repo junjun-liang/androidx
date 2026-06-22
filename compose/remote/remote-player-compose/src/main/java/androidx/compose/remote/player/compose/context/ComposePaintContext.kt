@@ -28,12 +28,14 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
+import androidx.compose.remote.core.CustomContext
 import androidx.compose.remote.core.PaintContext
 import androidx.compose.remote.core.RcPlatformServices
 import androidx.compose.remote.core.operations.ClipPath
 import androidx.compose.remote.core.operations.layout.managers.TextLayout
 import androidx.compose.remote.core.operations.layout.modifiers.GraphicsLayerModifierOperation
 import androidx.compose.remote.core.operations.paint.PaintBundle
+import androidx.compose.remote.player.compose.custom.ComposeCustomSupport
 import androidx.compose.remote.player.compose.utils.FloatsToPath
 import androidx.compose.remote.player.compose.utils.copy
 import androidx.compose.remote.player.compose.utils.getPath
@@ -61,7 +63,7 @@ import kotlin.math.roundToInt
 internal class ComposePaintContext(
     remoteContext: ComposeRemoteContext,
     private var canvas: Canvas,
-) : PaintContext(remoteContext) {
+) : PaintContext(remoteContext), CustomContext {
 
     var paint = Paint()
     var paintList: MutableList<Paint> = mutableListOf()
@@ -73,6 +75,11 @@ internal class ComposePaintContext(
     private var cachedFontMetrics: android.graphics.Paint.FontMetrics? = null
     private val cachedPaintChanges =
         ComposePaintChanges(remoteContext = remoteContext, getPaint = { this.paint })
+    private var customSupport: ComposeCustomSupport? = null
+
+    private val matrixStack = mutableListOf(Matrix())
+    private val currentMatrix: Matrix
+        get() = matrixStack.last()
 
     override fun drawBitmap(
         imageId: Int,
@@ -102,12 +109,53 @@ internal class ComposePaintContext(
         }
     }
 
+    override fun setCustomSupport(customSupport: CustomContext) {
+        this.customSupport = customSupport as? ComposeCustomSupport
+        this.customSupport?.setRemoteContext(mContext)
+        this.customSupport?.setCanvas(this.canvas)
+    }
+
+    override fun createCustom(id: Int, config: String) {
+        customSupport?.createCustom(id, config)
+    }
+
+    override fun configureCustom(id: Int, type: Int, value: String) {
+        customSupport?.configureCustom(id, type, value)
+    }
+
+    override fun configureCustom(id: Int, type: Int, value: Int) {
+        customSupport?.configureCustom(id, type, value)
+    }
+
+    override fun configureCustom(id: Int, type: Int, value: Float) {
+        customSupport?.configureCustom(id, type, value)
+    }
+
+    override fun measureCustom(id: Int, bounds: FloatArray) {
+        customSupport?.measureCustom(id, bounds)
+    }
+
+    override fun layoutCustom(id: Int, bounds: FloatArray) {
+        customSupport?.layoutCustom(id, bounds)
+    }
+
+    override fun touchCustom(id: Int, type: Int, x: Float, y: Float): Boolean {
+        return customSupport?.touchCustom(id, type, x, y) ?: false
+    }
+
+    override fun drawCustom(id: Int) {
+        val origin = currentMatrix.map(Offset.Zero)
+        customSupport?.updateBounds(id, origin.x, origin.y)
+        customSupport?.drawCustom(id)
+    }
+
     override fun scale(scaleX: Float, scaleY: Float) {
         canvas.scale(scaleX, scaleY)
     }
 
     override fun translate(translateX: Float, translateY: Float) {
         canvas.translate(translateX, translateY)
+        currentMatrix.translate(translateX, translateY)
     }
 
     override fun drawArc(
@@ -387,6 +435,7 @@ internal class ComposePaintContext(
 
     override fun matrixTranslate(translateX: Float, translateY: Float) {
         canvas.translate(translateX, translateY)
+        currentMatrix.translate(translateX, translateY)
     }
 
     override fun matrixSkew(skewX: Float, skewY: Float) {
@@ -403,10 +452,14 @@ internal class ComposePaintContext(
 
     override fun matrixSave() {
         canvas.save()
+        matrixStack.add(Matrix(currentMatrix.values.clone()))
     }
 
     override fun matrixRestore() {
         canvas.restore()
+        if (matrixStack.size > 1) {
+            matrixStack.removeAt(matrixStack.lastIndex)
+        }
     }
 
     override fun clipRect(left: Float, top: Float, right: Float, bottom: Float) {

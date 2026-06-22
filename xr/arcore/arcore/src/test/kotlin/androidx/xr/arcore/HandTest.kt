@@ -33,6 +33,7 @@ import androidx.xr.runtime.math.Vector3
 import com.google.common.truth.Truth.assertThat
 import kotlin.test.assertFailsWith
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -60,7 +61,7 @@ class HandTest {
     private lateinit var mockContentResolver: ContentResolver
 
     @Before
-    fun setUp() {
+    fun setUp(): Unit = runBlocking {
         testDispatcher = StandardTestDispatcher()
         testScope = TestScope(testDispatcher)
         activityController = Robolectric.buildActivity(ComponentActivity::class.java)
@@ -75,7 +76,7 @@ class HandTest {
             (Session.create(context = activity, coroutineContext = testDispatcher)
                     as SessionCreateSuccess)
                 .session
-        session.configure(Config(handTracking = HandTrackingMode.BOTH))
+        session.configure(Config.Builder().setHandTracking(HandTrackingMode.BOTH).build())
     }
 
     @After
@@ -105,7 +106,7 @@ class HandTest {
 
     @Test
     fun left_handTrackingDisabled_throwsIllegalStateException() {
-        session.configure(Config(handTracking = HandTrackingMode.DISABLED))
+        session.configure(Config.Builder().setHandTracking(HandTrackingMode.DISABLED).build())
 
         assertFailsWith<IllegalStateException> { Hand.left(session) }
     }
@@ -140,7 +141,7 @@ class HandTest {
 
     @Test
     fun right_handTrackingDisabled_throwsIllegalStateException() {
-        session.configure(Config(handTracking = HandTrackingMode.DISABLED))
+        session.configure(Config.Builder().setHandTracking(HandTrackingMode.DISABLED).build())
 
         assertFailsWith<IllegalStateException> { Hand.right(session) }
     }

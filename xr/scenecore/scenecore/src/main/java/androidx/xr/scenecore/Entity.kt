@@ -41,7 +41,7 @@ import java.util.concurrent.atomic.AtomicReference
  * additional behaviors.
  *
  * There are several subtypes of Entities. These include Entities with special positions, (e.g.
- * [ActivitySpace] and [AnchorEntity]) as well as those which are used to render different types of
+ * [ActivitySpace] and [AnchorSpace]) as well as those which are used to render different types of
  * content (e.g. [PanelEntity] and [GltfModelEntity]).
  */
 public open class Entity
@@ -109,7 +109,7 @@ internal constructor(rtEntity: RtEntity, private val entityRegistry: EntityRegis
      * so as the parent moves, this Entity will move with it. Setting the parent to `null` will
      * remove the Entity from the scene graph.
      */
-    public var parent: Entity?
+    public open var parent: Entity?
         get() {
             checkNotDisposed()
             return _parent.get()
@@ -306,7 +306,9 @@ internal constructor(rtEntity: RtEntity, private val entityRegistry: EntityRegis
     internal open fun disposeInternal() {
         if (isDisposed) return
         // Clear the parent to remove this entity from the parent's children list.
-        parent = null
+        if (this !is SpaceEntity) {
+            parent = null
+        }
 
         // Detach immediate children.
         val childrenToDetach =
@@ -315,7 +317,7 @@ internal constructor(rtEntity: RtEntity, private val entityRegistry: EntityRegis
                 _children.clear()
                 list
             }
-        childrenToDetach.forEach { it.parent = null }
+        childrenToDetach.forEach { it.disposeInternal() }
 
         _rtEntity?.let {
             cleanupAction.rtEntityRef.set(null)
@@ -399,7 +401,7 @@ internal constructor(rtEntity: RtEntity, private val entityRegistry: EntityRegis
     )
     public fun dispose() {
         if (!isDisposed) {
-            parent = null
+            disposeInternal()
         }
     }
 
@@ -421,8 +423,11 @@ internal constructor(rtEntity: RtEntity, private val entityRegistry: EntityRegis
          * @param session Session to create the Entity in.
          * @param name Name of the entity. This is unset by default.
          * @param pose Initial pose of the entity. The default value is [Pose.Identity].
-         * @param parent Parent entity. If `null`, the entity is created but not attached to the
-         *   scene graph and will not be visible until a parent is set. The default value is `null`.
+         * @param parent Parent entity. Defaults to `null`. If `null`, the entity is created but not
+         *   attached to the scene graph, meaning it will be invisible. If a parent entity (e.g.,
+         *   [ActivitySpace] or any other [Entity] already present in the scene) is assigned later,
+         *   the entity will become visible (provided it is enabled). This allows for [Entity]
+         *   pre-configuration before making it visible.
          */
         @JvmOverloads
         @JvmStatic

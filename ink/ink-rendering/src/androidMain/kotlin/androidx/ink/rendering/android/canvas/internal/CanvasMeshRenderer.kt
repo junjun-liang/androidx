@@ -39,13 +39,15 @@ import androidx.ink.geometry.BoxAccumulator
 import androidx.ink.geometry.Mesh as InkMesh
 import androidx.ink.geometry.MeshAttributeUnpackingParams
 import androidx.ink.geometry.MeshFormat
-import androidx.ink.geometry.getMeshOwnedRawTriangleIndexBuffer
-import androidx.ink.geometry.getMeshOwnedRawVertexBuffer
+import androidx.ink.geometry.getRawTriangleIndexBuffer
+import androidx.ink.geometry.getRawVertexBuffer
 import androidx.ink.nativeloader.NativeLoader
 import androidx.ink.nativeloader.UsedByNative
 import androidx.ink.strokes.InProgressStroke
 import androidx.ink.strokes.Stroke
 import androidx.ink.strokes.StrokeInput
+import androidx.ink.strokes.getRawTriangleIndexBuffer
+import androidx.ink.strokes.getRawVertexBuffer
 import java.util.WeakHashMap
 
 /**
@@ -431,9 +433,9 @@ internal class CanvasMeshRenderer(
         return AndroidMesh(
             meshSpec,
             AndroidMesh.TRIANGLES,
-            getMeshOwnedRawVertexBuffer(),
+            getRawVertexBuffer(),
             vertexCount,
-            getMeshOwnedRawTriangleIndexBuffer(),
+            getRawTriangleIndexBuffer(),
             RectF(bounds.xMin, bounds.yMin, bounds.xMax, bounds.yMax),
         )
     }

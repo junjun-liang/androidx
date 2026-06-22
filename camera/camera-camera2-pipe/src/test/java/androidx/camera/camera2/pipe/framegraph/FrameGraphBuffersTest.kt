@@ -17,8 +17,6 @@
 package androidx.camera.camera2.pipe.framegraph
 
 import android.content.Context
-import android.hardware.camera2.CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL
-import android.hardware.camera2.CameraMetadata.INFO_SUPPORTED_HARDWARE_LEVEL_FULL
 import android.hardware.camera2.CaptureRequest
 import android.util.Size
 import androidx.camera.camera2.pipe.CameraGraph
@@ -36,6 +34,7 @@ import androidx.camera.camera2.pipe.testing.FakeCameraMetadata
 import androidx.camera.camera2.pipe.testing.FakeMetadata.Companion.TEST_KEY
 import androidx.camera.camera2.pipe.testing.FakeRequestMetadata
 import androidx.camera.camera2.pipe.testing.FakeSurfaces
+import androidx.camera.camera2.pipe.testing.HighEndDeviceTemplate
 import androidx.camera.camera2.pipe.testing.RobolectricCameraPipeTestRunner
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
@@ -55,10 +54,7 @@ class FrameGraphBuffersTest {
     private val testScope = TestScope()
     private val context = ApplicationProvider.getApplicationContext() as Context
     private val fakeSurfaces = FakeSurfaces()
-    private val metadata =
-        FakeCameraMetadata(
-            mapOf(INFO_SUPPORTED_HARDWARE_LEVEL to INFO_SUPPORTED_HARDWARE_LEVEL_FULL)
-        )
+    private val metadata = FakeCameraMetadata.fromTemplate(HighEndDeviceTemplate)
     private val stream1Config =
         CameraStream.Config.create(Size(1280, 720), StreamFormat.YUV_420_888)
     private val stream2Config =
@@ -90,8 +86,8 @@ class FrameGraphBuffersTest {
             advanceUntilIdle()
 
             val frame = simulator.simulateNextFrame()
-            val parameters: Map<CaptureRequest.Key<*>, Any> = mapOf(CAPTURE_REQUEST_KEY to 2)
-            val extras: Map<Metadata.Key<*>, Any> = mapOf(TEST_KEY to 5)
+            val parameters: Map<CaptureRequest.Key<*>, Any?> = mapOf(CAPTURE_REQUEST_KEY to 2)
+            val extras: Map<Metadata.Key<*>, Any?> = mapOf(TEST_KEY to 5)
             assertThat(frame.request.streams).isEqualTo(listOf(streamId1, streamId2))
             assertThat(frame.request.parameters).isEqualTo(parameters)
             assertThat(frame.request.extras).isEqualTo(extras)
@@ -108,9 +104,9 @@ class FrameGraphBuffersTest {
                 )
             val frameBuffer2 =
                 frameGraphBuffers.attach(setOf(streamId2), mapOf(TEST_NULLABLE_KEY to 42), 1)
-            var parameters: Map<CaptureRequest.Key<*>, Any> =
+            var parameters: Map<CaptureRequest.Key<*>, Any?> =
                 mapOf(CAPTURE_REQUEST_KEY to 2, TEST_NULLABLE_KEY to 42)
-            val extras: Map<Metadata.Key<*>, Any> = mapOf(TEST_KEY to 5)
+            val extras: Map<Metadata.Key<*>, Any?> = mapOf(TEST_KEY to 5)
             advanceUntilIdle()
 
             assertThat(simulator.simulateNextFrame().request.streams)
@@ -125,7 +121,7 @@ class FrameGraphBuffersTest {
             assertThat(simulator.simulateNextFrame().request.streams).isEqualTo(listOf(streamId2))
             assertThat(simulator.simulateNextFrame().request.parameters).isEqualTo(parameters)
             assertThat(simulator.simulateNextFrame().request.extras)
-                .isEqualTo(emptyMap<Metadata.Key<*>, Any>())
+                .isEqualTo(emptyMap<Metadata.Key<*>, Any?>())
 
             frameBuffer2.close()
         }

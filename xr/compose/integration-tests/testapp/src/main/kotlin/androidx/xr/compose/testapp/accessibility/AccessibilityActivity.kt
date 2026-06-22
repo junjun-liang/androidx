@@ -46,6 +46,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
 import androidx.xr.arcore.Anchor
 import androidx.xr.arcore.AnchorCreateResourcesExhausted
 import androidx.xr.arcore.AnchorCreateSuccess
@@ -63,6 +64,7 @@ import androidx.xr.compose.subspace.layout.height
 import androidx.xr.compose.subspace.layout.offset
 import androidx.xr.compose.subspace.layout.width
 import androidx.xr.compose.subspace.rememberSpatialGltfModelState
+import androidx.xr.compose.subspace.semantics.contentDescription
 import androidx.xr.compose.subspace.semantics.semantics
 import androidx.xr.compose.testapp.R
 import androidx.xr.compose.testapp.common.AnotherActivity
@@ -76,7 +78,7 @@ import androidx.xr.runtime.SessionCreateSuccess
 import androidx.xr.runtime.math.FloatSize2d
 import androidx.xr.runtime.math.Pose
 import androidx.xr.runtime.math.Vector3
-import androidx.xr.scenecore.AnchorEntity
+import androidx.xr.scenecore.AnchorSpace
 import androidx.xr.scenecore.GltfModel
 import androidx.xr.scenecore.GltfModelEntity
 import androidx.xr.scenecore.ImageBasedLightingAsset
@@ -89,7 +91,7 @@ import kotlinx.coroutines.launch
 class AccessibilityActivity : ComponentActivity() {
     private val activity = this
     private val TAG = "AccessibilityTest"
-    private val session by lazy { (Session.create(context = this) as SessionCreateSuccess).session }
+    private lateinit var session: Session
     private var spatialEnvironmentPreference: SpatialEnvironmentPreference? = null
 
     enum class PanelType {
@@ -101,9 +103,17 @@ class AccessibilityActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        session.scene.spatialEnvironment.preferredPassthroughOpacity = 0.0f
+        lifecycleScope.launch {
+            val sessionResult = Session.create(context = this@AccessibilityActivity)
+            if (sessionResult is SessionCreateSuccess) {
+                session = sessionResult.session
+                session.scene.spatialEnvironment.preferredPassthroughOpacity = 0.0f
 
-        setContent { MainContent() }
+                setContent { MainContent() }
+            } else {
+                finish()
+            }
+        }
     }
 
     @Composable
@@ -129,7 +139,7 @@ class AccessibilityActivity : ComponentActivity() {
                             Card("GLTF Entities") {
                                 GltfEntityUI(onToggle = { showGltfEntities = it })
                             }
-                            Card("Anchor Entity") { AnchorEntityUI() }
+                            Card("Anchor Space") { AnchorSpaceUI() }
                         }
                         Column(
                             verticalArrangement = Arrangement.Center,
@@ -386,9 +396,9 @@ class AccessibilityActivity : ComponentActivity() {
     }
 
     @Composable
-    fun AnchorEntityUI() {
+    fun AnchorSpaceUI() {
         val gltfEntity = remember { mutableStateOf<GltfModelEntity?>(null) }
-        val anchorEntity = remember { mutableStateOf<AnchorEntity?>(null) }
+        val anchorSpace = remember { mutableStateOf<AnchorSpace?>(null) }
         val scope = rememberCoroutineScope()
 
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -401,11 +411,11 @@ class AccessibilityActivity : ComponentActivity() {
                             val model =
                                 GltfModel.create(session, Paths.get("models", "xyzArrows.glb"))
                             gltfEntity.value = createModelEntity(model, "", anchorPose.translation)
-                            anchorEntity.value =
-                                AnchorEntity.create(session, anchor = anchorResult.anchor)
-                            gltfEntity.value?.parent = anchorEntity.value
-                            anchorEntity.value?.contentDescription =
-                                "Anchor Entity at ${anchorPose.translation}"
+                            anchorSpace.value =
+                                AnchorSpace.create(session, anchor = anchorResult.anchor)
+                            gltfEntity.value?.parent = anchorSpace.value
+                            anchorSpace.value?.contentDescription =
+                                "Anchor Space at ${anchorPose.translation}"
                         }
 
                         is AnchorCreateResourcesExhausted -> {
@@ -421,8 +431,8 @@ class AccessibilityActivity : ComponentActivity() {
                 Text("Create Anchor", fontSize = 20.sp)
             }
             Button({
-                anchorEntity.value?.parent = null
-                anchorEntity.value = null
+                anchorSpace.value?.parent = null
+                anchorSpace.value = null
                 gltfEntity.value?.parent = null
                 gltfEntity.value = null
             }) {

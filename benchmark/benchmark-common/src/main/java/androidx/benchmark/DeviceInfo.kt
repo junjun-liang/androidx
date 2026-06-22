@@ -28,10 +28,10 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.annotation.RestrictTo
+import androidx.annotation.VisibleForTesting
 import androidx.benchmark.DeviceInfo.ART_MAINLINE_MIN_VERSION_VERIFY_CLEARS_RUNTIME_IMAGE
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
-import org.jetbrains.annotations.VisibleForTesting
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 object DeviceInfo {
@@ -120,6 +120,13 @@ object DeviceInfo {
     val misconfiguredForTracing =
         !File("/sys/kernel/tracing/trace_marker").exists() &&
             !File("/sys/kernel/debug/tracing/trace_marker").exists()
+
+    /**
+     * Observed unreliable tracebox behavior on emulators 23-25, so we suppress those tests
+     *
+     * See b/522895306
+     */
+    val expectedToSupportTracingInTests = !isEmulator || Build.VERSION.SDK_INT >= 26
 
     private fun getMainlinePackageInfo(packageName: String): PackageInfo? {
         return try {

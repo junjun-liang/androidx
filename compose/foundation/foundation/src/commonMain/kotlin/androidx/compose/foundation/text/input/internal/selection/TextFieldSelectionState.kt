@@ -159,8 +159,20 @@ internal class TextFieldSelectionState(
     /** A handler to trigger the [TextToolbar] to be shown or hidden */
     private var textToolbarHandler: TextToolbarHandler? = null
 
-    /** Whether user is interacting with the UI in touch mode. */
-    var isInTouchMode: Boolean by mutableStateOf(true)
+    /**
+     * A state that maintains whether the user's last interaction with this text field was via
+     * direct touch.
+     *
+     * This defaults to true, and corresponds to an interaction with the text field from a finger or
+     * a stylus.
+     *
+     * Mouse, trackpad, and focus interactions will cause this state to be false.
+     *
+     * This state is used to drive behavior that should differ based on the input method by which
+     * the user is interacting with the text field, such as whether to show the selection handles
+     * and toolbar are shown.
+     */
+    var isDirectTouchInteraction: Boolean by mutableStateOf(true)
 
     /** The action to invoke when autofill is requested in text toolbar. */
     var requestAutofillAction: (() -> Unit)? = null
@@ -491,7 +503,7 @@ internal class TextFieldSelectionState(
     /** Implements the complete set of gestures supported by the cursor handle. */
     suspend fun PointerInputScope.cursorHandleGestures() {
         coroutineScope {
-            launch(start = CoroutineStart.UNDISPATCHED) { detectTouchMode() }
+            launch(start = CoroutineStart.UNDISPATCHED) { detectDirectTouchInteraction() }
             launch(start = CoroutineStart.UNDISPATCHED) { detectCursorHandleDragGestures() }
             launch(start = CoroutineStart.UNDISPATCHED) {
                 detectTapGestures(
@@ -504,7 +516,7 @@ internal class TextFieldSelectionState(
     /** Gesture detector for dragging the selection handles to change the selection in TextField. */
     suspend fun PointerInputScope.selectionHandleGestures(isStartHandle: Boolean) {
         coroutineScope {
-            launch(start = CoroutineStart.UNDISPATCHED) { detectTouchMode() }
+            launch(start = CoroutineStart.UNDISPATCHED) { detectDirectTouchInteraction() }
             launch(start = CoroutineStart.UNDISPATCHED) {
                     detectPressDownGesture(
                         onDown = {
@@ -557,15 +569,15 @@ internal class TextFieldSelectionState(
     }
 
     /**
-     * Detects the current pointer type in this [PointerInputScope] to update the touch mode state.
-     * This helper gesture detector should be added to all TextField pointer input receivers such as
-     * TextFieldDecorator, cursor handle, and selection handles.
+     * Detects the current pointer type in this [PointerInputScope] to update the direct touch
+     * interaction state. This helper gesture detector should be added to all TextField pointer
+     * input receivers such as TextFieldDecorator, cursor handle, and selection handles.
      */
-    suspend fun PointerInputScope.detectTouchMode() {
+    suspend fun PointerInputScope.detectDirectTouchInteraction() {
         awaitPointerEventScope {
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
-                isInTouchMode = !event.isMouseOrTouchPad()
+                isDirectTouchInteraction = !event.isMouseOrTouchPad()
             }
         }
     }
@@ -679,7 +691,7 @@ internal class TextFieldSelectionState(
                     // mark start drag point
                     cursorDragStart = getAdjustedCoordinates(getCursorRect().bottomCenter)
                     cursorDragDelta = Offset.Zero
-                    isInTouchMode = true
+                    isDirectTouchInteraction = true
                     markStartContentVisibleOffset()
                     updateHandleDragging(Handle.Cursor, cursorDragStart)
                 },
@@ -1287,7 +1299,7 @@ internal class TextFieldSelectionState(
         val textToolbarVisible =
             textToolbarStateVisible &&
                 draggingHandle == null && // not dragging any selection handles
-                isInTouchMode // toolbar hidden when not in touch mode
+                isDirectTouchInteraction // toolbar hidden when not in direct touch interaction
 
         // final visibility decision is made by contentRect visibility. if contentRect is not in
         // visible bounds, just pass Rect.Zero to the observer so that it hides the toolbar.
@@ -1568,11 +1580,14 @@ internal class TextFieldSelectionState(
      */
     @Suppress("NOTHING_TO_INLINE") inline fun isPasteAllowed(): Boolean = editable
 
-    suspend fun paste() {
+    suspend fun paste(isFromHardwareSource: Boolean = false) {
         val receiveContentConfiguration =
-            receiveContentConfiguration?.invoke() ?: return pasteAsPlainText()
+            receiveContentConfiguration?.invoke()
+                ?: return pasteAsPlainText(isFromHardwareSource = isFromHardwareSource)
 
-        val clipEntry = clipboard.getClipEntry() ?: return pasteAsPlainText()
+        val clipEntry =
+            clipboard.getClipEntry()
+                ?: return pasteAsPlainText(isFromHardwareSource = isFromHardwareSource)
         val clipMetadata = clipEntry.clipMetadata
 
         val remaining =
@@ -1590,6 +1605,7 @@ internal class TextFieldSelectionState(
             textFieldState.replaceSelectedText(
                 clipboardText,
                 undoBehavior = TextFieldEditUndoBehavior.NeverMerge,
+                isFromHardwareSource = isFromHardwareSource,
             )
         }
     }
@@ -1602,12 +1618,13 @@ internal class TextFieldSelectionState(
      * selected text. Then the selection should collapse, and the new cursor offset should be at the
      * end of the newly added text.
      */
-    private suspend fun pasteAsPlainText() {
+    private suspend fun pasteAsPlainText(isFromHardwareSource: Boolean) {
         val clipboardText = clipboard.getClipEntry()?.readText() ?: return
 
         textFieldState.replaceSelectedText(
             clipboardText,
             undoBehavior = TextFieldEditUndoBehavior.NeverMerge,
+            isFromHardwareSource = isFromHardwareSource,
         )
     }
 
@@ -1620,11 +1637,12 @@ internal class TextFieldSelectionState(
      * This overload doesn't interact with the Clipboard directly. It covers the case when handling
      * a 'paste' ClipboardEvent.
      */
-    internal fun onPasteEvent(value: AnnotatedString) {
+    internal fun onPasteEvent(value: AnnotatedString, isFromHardwareSource: Boolean = false) {
         if (!isPasteAllowed()) return
         textFieldState.replaceSelectedText(
             value.text,
             undoBehavior = TextFieldEditUndoBehavior.NeverMerge,
+            isFromHardwareSource = isFromHardwareSource,
         )
     }
 

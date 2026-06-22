@@ -66,8 +66,6 @@ actual internal object TextureLayerNative {
 
     @UsedByNative actual external fun free(nativePointer: Long)
 
-    @UsedByNative actual external fun getClientTextureId(nativePointer: Long): String
-
     @UsedByNative actual external fun getMappingInt(nativePointer: Long): Int
 
     @UsedByNative actual external fun getBlendModeInt(nativePointer: Long): Int
@@ -93,6 +91,8 @@ actual internal object TilingTextureNative {
         wrapY: Int,
         blendMode: Int,
     ): Long
+
+    @UsedByNative actual external fun getClientTextureId(nativePointer: Long): String
 
     @UsedByNative actual external fun getSizeX(nativePointer: Long): Float
 
@@ -129,6 +129,8 @@ actual internal object StampingTextureNative {
         blendMode: Int,
     ): Long
 
+    @UsedByNative actual external fun getClientTextureId(nativePointer: Long): String
+
     @UsedByNative actual external fun getAnimationFrames(nativePointer: Long): Int
 
     @UsedByNative actual external fun getAnimationRows(nativePointer: Long): Int
@@ -146,6 +148,12 @@ actual internal object ColorFunctionNative {
 
     @UsedByNative actual external fun createOpacityMultiplier(multiplier: Float): Long
 
+    @UsedByNative actual external fun createHueOffset(offsetDegrees: Float): Long
+
+    @UsedByNative actual external fun createSaturationMultiplier(multiplier: Float): Long
+
+    @UsedByNative actual external fun createLuminosityOffset(offset: Float): Long
+
     @UsedByNative
     actual external fun createReplaceColor(
         colorRed: Float,
@@ -159,5 +167,21 @@ actual internal object ColorFunctionNative {
 
     @UsedByNative actual external fun getOpacityMultiplier(nativePointer: Long): Float
 
+    @UsedByNative actual external fun getHueOffsetDegrees(nativePointer: Long): Float
+
+    @UsedByNative actual external fun getSaturationMultiplier(nativePointer: Long): Float
+
+    @UsedByNative actual external fun getLuminosityOffset(nativePointer: Long): Float
+
     @UsedByNative actual external fun computeReplaceColorLong(nativePointer: Long): Long
+
+    @UsedByNative
+    actual external fun computeTransformedColorLong(
+        nativePointer: Long,
+        colorRed: Float,
+        colorGreen: Float,
+        colorBlue: Float,
+        colorAlpha: Float,
+        colorSpace: Int,
+    ): Long
 }

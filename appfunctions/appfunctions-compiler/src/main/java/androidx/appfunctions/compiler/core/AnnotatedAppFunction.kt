@@ -17,8 +17,6 @@
 package androidx.appfunctions.compiler.core
 
 import androidx.appfunctions.compiler.core.AnnotatedAppFunctionSerializableProxy.ResolvedAnnotatedSerializableProxies
-import androidx.appfunctions.compiler.core.AppFunctionTypeReference.AppFunctionSupportedTypeCategory.SERIALIZABLE_LIST
-import androidx.appfunctions.compiler.core.AppFunctionTypeReference.AppFunctionSupportedTypeCategory.SERIALIZABLE_SINGULAR
 import androidx.appfunctions.compiler.core.AppFunctionTypeReference.Companion.SUPPORTED_TYPES_STRING
 import androidx.appfunctions.compiler.core.AppFunctionTypeReference.Companion.isAllowToBeOptional
 import androidx.appfunctions.compiler.core.AppFunctionTypeReference.Companion.isSupportedType
@@ -107,14 +105,15 @@ data class AnnotatedAppFunction(
 
         val appFunctionAnnotationProperties =
             metadataCreatorHelper.computeAppFunctionAnnotationProperties(appFunctionDeclaration)
-        val functionDescription = getFunctionDescription(appFunctionAnnotationProperties)
+        val rawKDoc = getRawKDoc(appFunctionAnnotationProperties)
+
         val parameterTypeMetadataList =
             metadataCreatorHelper.buildParameterTypeMetadataList(
                 parameters = appFunctionDeclaration.parameters,
                 resolvedAnnotatedSerializableProxies = resolvedAnnotatedSerializableProxies,
                 sharedDataTypeMap = sharedDataTypeMap,
                 seenDataTypeQualifiers = seenDataTypeQualifiers,
-                parameterDescriptionMap = getParamDescriptionsFromKDoc(functionDescription),
+                parameterDescriptionMap = getParamDescriptionsFromKDoc(rawKDoc),
             )
         val responseTypeMetadata =
             metadataCreatorHelper.buildResponseTypeMetadata(
@@ -124,6 +123,7 @@ data class AnnotatedAppFunction(
                 seenDataTypeQualifiers = seenDataTypeQualifiers,
                 functionAnnotations = appFunctionDeclaration.annotations,
             )
+
         val deprecationMetadata = appFunctionDeclaration.getDeprecationMetadata()
 
         return CompileTimeAppFunctionMetadata(
@@ -134,11 +134,11 @@ data class AnnotatedAppFunction(
             response =
                 AppFunctionResponseMetadata(
                     valueType = responseTypeMetadata,
-                    description = getResponseDescriptionFromKDoc(functionDescription),
+                    description = appFunctionDeclaration.getResponseDescription(rawKDoc),
                 ),
             components = AppFunctionComponentsMetadata(dataTypes = sharedDataTypeMap),
-            description = sanitizeKDoc(functionDescription),
-            deprecation = deprecationMetadata,
+            description = appFunctionDeclaration.getFunctionDescription(rawKDoc),
+            deprecation = appFunctionDeclaration.getDeprecationMetadata(),
         )
     }
 
@@ -168,7 +168,8 @@ data class AnnotatedAppFunction(
             val parameterTypeReference = AppFunctionTypeReference(ksValueParameter.type)
             if (parameterTypeReference.typeOrItemTypeIsAppFunctionSerializable()) {
                 sourceFileSet.addAll(
-                    getAnnotatedAppFunctionSerializable(parameterTypeReference)
+                    parameterTypeReference
+                        .getAnnotatedAppFunctionSerializable()
                         .getTransitiveSerializableSourceFiles()
                 )
             }
@@ -178,7 +179,8 @@ data class AnnotatedAppFunction(
             AppFunctionTypeReference(checkNotNull(appFunctionDeclaration.returnType))
         if (returnTypeReference.typeOrItemTypeIsAppFunctionSerializable()) {
             sourceFileSet.addAll(
-                getAnnotatedAppFunctionSerializable(returnTypeReference)
+                returnTypeReference
+                    .getAnnotatedAppFunctionSerializable()
                     .getTransitiveSerializableSourceFiles()
             )
         }
@@ -276,7 +278,7 @@ data class AnnotatedAppFunction(
         return findRootAppFunctionSchemaInterface(superClassFunction)
     }
 
-    private fun getFunctionDescription(
+    private fun getRawKDoc(
         appFunctionAnnotationProperties:
             AppFunctionMetadataCreatorHelper.AppFunctionAnnotationProperties
     ): String {
@@ -297,26 +299,5 @@ data class AnnotatedAppFunction(
                 String::class,
             )
         return AppFunctionDeprecationMetadata(message)
-    }
-
-    private fun getAnnotatedAppFunctionSerializable(
-        appFunctionTypeReference: AppFunctionTypeReference
-    ): AppFunctionSerializableType {
-        val appFunctionSerializableKSType =
-            appFunctionTypeReference.selfOrItemTypeReference.resolve()
-        return AppFunctionSerializableType.create(
-            classDeclaration =
-                appFunctionSerializableKSType.declaration as? KSClassDeclaration
-                    ?: throw ProcessingException(
-                        "Only classes/interfaces should be annotated with @AppFunctionSerializable",
-                        appFunctionSerializableKSType.declaration,
-                    ),
-            typeArguments = appFunctionSerializableKSType.arguments,
-        )
-    }
-
-    private fun AppFunctionTypeReference.typeOrItemTypeIsAppFunctionSerializable(): Boolean {
-        return this.isOfTypeCategory(SERIALIZABLE_SINGULAR) ||
-            this.isOfTypeCategory(SERIALIZABLE_LIST)
     }
 }

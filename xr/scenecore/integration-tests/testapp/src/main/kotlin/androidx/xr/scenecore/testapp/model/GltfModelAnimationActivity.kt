@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+@file:kotlin.OptIn(androidx.xr.scenecore.ExperimentalGltfAnimationApi::class)
+
 package androidx.xr.scenecore.testapp.model
 
 import android.annotation.SuppressLint
@@ -91,20 +93,12 @@ class GltfModelAnimationActivity : AppCompatActivity() {
     private var gltfModel: GltfModel? = null
     private var gltfModelEntity: GltfModelEntity? = null
 
-    private val session by lazy { (Session.create(context = this) as SessionCreateSuccess).session }
-
-    private companion object {
-        const val STATE_PLAYING = "PLAYING"
-        const val STATE_STOPPED = "STOPPED"
-        const val STATE_PAUSED = "PAUSED"
-    }
+    private lateinit var session: Session
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.activity_gltf_model_animation)
-
-        session.scene.keyEntity = session.scene.mainPanelEntity
 
         findViewById<Toolbar>(R.id.gltf_model_animation_topAppBar).also {
             setSupportActionBar(it)
@@ -226,6 +220,16 @@ class GltfModelAnimationActivity : AppCompatActivity() {
 
         setAllUiEnabled(false)
         createGltfModelButton.isEnabled = true
+
+        lifecycleScope.launch {
+            val sessionResult = Session.create(context = this@GltfModelAnimationActivity)
+            if (sessionResult is SessionCreateSuccess) {
+                session = sessionResult.session
+                session.scene.keyEntity = session.scene.mainPanelEntity
+            } else {
+                this@GltfModelAnimationActivity.finish()
+            }
+        }
     }
 
     suspend fun createGltfModel() {
@@ -263,7 +267,7 @@ class GltfModelAnimationActivity : AppCompatActivity() {
 
         if (gltfModelEntity != null) {
 
-            animations = gltfModelEntity!!.animations
+            animations = gltfModelEntity!!.getAnimations()
             Log.w(TAG, "Animation total count is ${animations.size - 1}")
 
             // setup spinner item to show options in spinner
@@ -291,12 +295,8 @@ class GltfModelAnimationActivity : AppCompatActivity() {
                 selectedIndexAtAnimationList = position
 
                 animationStateText.text =
-                    when (animationStateMap[position]) {
-                        GltfAnimation.AnimationState.PLAYING -> STATE_PLAYING
-                        GltfAnimation.AnimationState.STOPPED -> STATE_STOPPED
-                        GltfAnimation.AnimationState.PAUSED -> STATE_PAUSED
-                        else -> STATE_STOPPED
-                    }
+                    animationStateMap[position]?.toString()
+                        ?: GltfAnimation.AnimationState.STOPPED.toString()
 
                 loopToggleButton.isChecked = false
 
@@ -310,7 +310,7 @@ class GltfModelAnimationActivity : AppCompatActivity() {
                 speedSlider.value = 1f
             }
 
-            animationStateText.text = STATE_STOPPED
+            animationStateText.text = GltfAnimation.AnimationState.STOPPED.toString()
         }
     }
 
@@ -325,24 +325,18 @@ class GltfModelAnimationActivity : AppCompatActivity() {
             when (state) {
                 GltfAnimation.AnimationState.PLAYING -> {
                     Log.d(TAG, "${animation.name} animation is now playing!!")
-                    if (animation.index == selectedIndexAtAnimationList) {
-                        animationStateText.text = STATE_PLAYING
-                    }
                 }
 
                 GltfAnimation.AnimationState.STOPPED -> {
                     Log.d(TAG, "${animation.name} animation is now stopped!!")
-                    if (animation.index == selectedIndexAtAnimationList) {
-                        animationStateText.text = STATE_STOPPED
-                    }
                 }
 
                 GltfAnimation.AnimationState.PAUSED -> {
                     Log.d(TAG, "${animation.name} animation is now paused!!")
-                    if (animation.index == selectedIndexAtAnimationList) {
-                        animationStateText.text = STATE_PAUSED
-                    }
                 }
+            }
+            if (animation.index == selectedIndexAtAnimationList) {
+                animationStateText.text = state.toString()
             }
 
             animationStateMap[animation.index] = state
@@ -357,7 +351,7 @@ class GltfModelAnimationActivity : AppCompatActivity() {
         animations = emptyList()
         animationStateMap.clear()
         animationList.setText("Choose glTF Animations")
-        animationStateText.text = STATE_STOPPED
+        animationStateText.text = GltfAnimation.AnimationState.STOPPED.toString()
 
         selectedIndexAtAnimationList = -1
     }

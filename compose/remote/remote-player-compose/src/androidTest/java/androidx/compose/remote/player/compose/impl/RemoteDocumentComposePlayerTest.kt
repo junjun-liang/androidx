@@ -19,6 +19,7 @@ package androidx.compose.remote.player.compose.impl
 import android.content.Context
 import androidx.compose.remote.core.CoreDocument
 import androidx.compose.remote.core.RemoteComposeBuffer
+import androidx.compose.remote.core.RemoteContext
 import androidx.compose.remote.creation.compose.capture.captureSingleRemoteDocument
 import androidx.compose.remote.creation.compose.layout.RemoteBox
 import androidx.compose.remote.creation.compose.layout.RemoteText
@@ -26,7 +27,7 @@ import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 import androidx.compose.remote.creation.compose.modifier.background
 import androidx.compose.remote.creation.compose.modifier.fillMaxSize
 import androidx.compose.remote.player.compose.SCREENSHOT_GOLDEN_DIRECTORY
-import androidx.compose.remote.player.compose.test.utils.screenshot.rule.RemoteDocScreenshotTestRule
+import androidx.compose.remote.player.compose.test.utils.RemoteDocScreenshotTestRule
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.test.core.app.ApplicationProvider
@@ -80,6 +81,22 @@ class RemoteDocumentComposePlayerTest {
         composeTestRule.runScreenshotTest(
             coreDocument = remoteComposeDocument,
             size = Size(200f / density, 200f / density),
+        )
+    }
+
+    @Test
+    fun testPlayer_paintExceptionShowsErrorUI() = runTest {
+        val remoteComposeDocument =
+            object : CoreDocument() {
+                override fun paint(context: RemoteContext, theme: Int) {
+                    throw RuntimeException("Simulated Paint Exception")
+                }
+            }
+
+        val density = context.resources.displayMetrics.density
+        composeTestRule.runScreenshotTest(
+            coreDocument = remoteComposeDocument,
+            size = Size(600f / density, 600f / density),
         )
     }
 }

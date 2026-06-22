@@ -276,11 +276,12 @@ class AppFunctionInvokerProcessor(private val codeGenerator: CodeGenerator) : Sy
                 contextSpec,
                 functionParametersSpec,
             )
+        val factoryClassName = ConfigurableAppFunctionFactoryClass.CLASS_NAME
         val formatStringMap =
             mapOf<String, Any>(
                 "function_id" to
                     appFunction.getAppFunctionIdentifier(annotatedAppFunctions.classDeclaration),
-                "factory_class" to ConfigurableAppFunctionFactoryClass.CLASS_NAME,
+                "factory_class" to factoryClassName,
                 "enclosing_class" to annotatedAppFunctions.getEnclosingClassName(),
                 "context_param" to contextSpec.name,
                 "context_property" to AppFunctionContextClass.CONTEXT_PROPERTY_NAME,

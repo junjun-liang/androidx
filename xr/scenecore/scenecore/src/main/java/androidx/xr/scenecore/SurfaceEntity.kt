@@ -22,7 +22,6 @@ import androidx.annotation.FloatRange
 import androidx.annotation.MainThread
 import androidx.annotation.RestrictTo
 import androidx.xr.arcore.RenderViewpoint
-import androidx.xr.arcore.runtime.PerceptionRuntime
 import androidx.xr.runtime.Session
 import androidx.xr.runtime.math.FieldOfView
 import androidx.xr.runtime.math.FloatSize2d
@@ -31,6 +30,8 @@ import androidx.xr.runtime.math.IntSize2d
 import androidx.xr.runtime.math.Pose
 import androidx.xr.scenecore.runtime.RenderingRuntime
 import androidx.xr.scenecore.runtime.SurfaceEntity as RtSurfaceEntity
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.IntBuffer
 
@@ -72,35 +73,25 @@ private constructor(
          *
          * @property extents The size of the Quad in the local spatial coordinate system of the
          *   entity.
+         * @property cornerRadius The radius of the rounded corners of the Quad in the local spatial
+         *   coordinate system of the entity. The maximum allowed value is half of the smaller
+         *   dimension of [extents]. If set to 0.0f, the corners will be sharp.
          */
-        public class Quad : Shape {
-            public val extents: FloatSize2d
-            @get:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) public val cornerRadius: Float
-
-            /**
-             * A Quadrilateral-shaped canvas.
-             *
-             * @param extents The size of the Quad in the local spatial coordinate system of the
-             *   entity.
-             */
-            public constructor(extents: FloatSize2d) : this(extents, 0.0f)
-
-            /**
-             * A Quadrilateral-shaped canvas with rounded corners.
-             *
-             * @param extents The size of the Quad in the local spatial coordinate system of the
-             *   entity.
-             * @param cornerRadius The radius of the rounded corners of the Quad in the local
-             *   spatial coordinate system of the entity. If set to 0.0f, the corners will be sharp.
-             */
-            @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-            public constructor(extents: FloatSize2d, cornerRadius: Float) {
+        public class Quad
+        @JvmOverloads
+        constructor(
+            public val extents: FloatSize2d,
+            @FloatRange(from = 0.0) public val cornerRadius: Float = 0.0f,
+        ) : Shape {
+            init {
                 require(extents.width >= 0.0f && extents.height >= 0.0f) {
                     "extents must be non-negative"
                 }
                 require(cornerRadius >= 0.0f) { "cornerRadius must be non-negative" }
-                this.extents = extents
-                this.cornerRadius = cornerRadius
+                val maxRadius = minOf(extents.width, extents.height) / 2.0f
+                require(cornerRadius <= maxRadius) {
+                    "cornerRadius ($cornerRadius) must not be greater than half of the smaller dimension (width or height): $maxRadius"
+                }
             }
         }
 
@@ -153,10 +144,54 @@ private constructor(
          */
         @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
         public class TriangleMesh(
-            public val positions: FloatBuffer,
-            public val texCoords: FloatBuffer,
-            public val indices: IntBuffer? = null,
-        ) {}
+            positions: FloatBuffer,
+            texCoords: FloatBuffer,
+            indices: IntBuffer? = null,
+        ) {
+            public val positions: FloatBuffer =
+                if (positions.isDirect) positions
+                else {
+                    copyToDirect(positions)
+                }
+            public val texCoords: FloatBuffer =
+                if (texCoords.isDirect) texCoords
+                else {
+                    copyToDirect(texCoords)
+                }
+            public val indices: IntBuffer? =
+                if (indices == null || indices.isDirect) indices
+                else {
+                    copyToDirect(indices)
+                }
+
+            private companion object {
+                private fun copyToDirect(buffer: FloatBuffer): FloatBuffer {
+                    val direct =
+                        ByteBuffer.allocateDirect(buffer.capacity() * 4)
+                            .order(ByteOrder.nativeOrder())
+                            .asFloatBuffer()
+                    val duplicate = buffer.duplicate()
+                    duplicate.clear()
+                    direct.put(duplicate)
+                    direct.position(buffer.position())
+                    direct.limit(buffer.limit())
+                    return direct
+                }
+
+                private fun copyToDirect(buffer: IntBuffer): IntBuffer {
+                    val direct =
+                        ByteBuffer.allocateDirect(buffer.capacity() * 4)
+                            .order(ByteOrder.nativeOrder())
+                            .asIntBuffer()
+                    val duplicate = buffer.duplicate()
+                    duplicate.clear()
+                    direct.put(duplicate)
+                    direct.position(buffer.position())
+                    direct.limit(buffer.limit())
+                    return direct
+                }
+            }
+        }
 
         /**
          * Specifies vertex geometry for the projection surface. Vertex positions should be
@@ -239,6 +274,13 @@ private constructor(
              */
             @JvmField public val PROTECTED: SurfaceProtection = SurfaceProtection(1)
         }
+
+        override fun toString(): String =
+            when (this) {
+                NONE -> "NONE"
+                PROTECTED -> "PROTECTED"
+                else -> "UNKNOWN ($value)"
+            }
     }
 
     /**
@@ -257,6 +299,13 @@ private constructor(
              */
             @JvmField public val PENTAGON: SuperSampling = SuperSampling(1)
         }
+
+        override fun toString(): String =
+            when (this) {
+                NONE -> "NONE"
+                PENTAGON -> "PENTAGON"
+                else -> "UNKNOWN ($value)"
+            }
     }
 
     /** Specifies the drawing mode for a [Shape.TriangleMesh]. */
@@ -270,6 +319,14 @@ private constructor(
             /** Draw the mesh as a triangle fan. */
             @JvmField public val TRIANGLE_FAN: DrawMode = DrawMode(3)
         }
+
+        override fun toString(): String =
+            when (this) {
+                TRIANGLES -> "TRIANGLES"
+                TRIANGLE_STRIP -> "TRIANGLE_STRIP"
+                TRIANGLE_FAN -> "TRIANGLE_FAN"
+                else -> "UNKNOWN ($value)"
+            }
     }
 
     /**
@@ -298,6 +355,16 @@ private constructor(
             /** Multiview video, [primary, auxiliary] views will map to [right, left] eyes */
             @JvmField public val MULTIVIEW_RIGHT_PRIMARY: StereoMode = StereoMode(5)
         }
+
+        override fun toString(): String =
+            when (this) {
+                MONO -> "MONO"
+                TOP_BOTTOM -> "TOP_BOTTOM"
+                SIDE_BY_SIDE -> "SIDE_BY_SIDE"
+                MULTIVIEW_LEFT_PRIMARY -> "MULTIVIEW_LEFT_PRIMARY"
+                MULTIVIEW_RIGHT_PRIMARY -> "MULTIVIEW_RIGHT_PRIMARY"
+                else -> "UNKNOWN ($value)"
+            }
     }
 
     /** Specifies the blending mode of the content. */
@@ -310,6 +377,13 @@ private constructor(
             /** Content is opaque and does not blend with the background. */
             @JvmField public val OPAQUE: MediaBlendingMode = MediaBlendingMode(2)
         }
+
+        override fun toString(): String =
+            when (this) {
+                TRANSPARENT -> "TRANSPARENT"
+                OPAQUE -> "OPAQUE"
+                else -> "UNKNOWN ($value)"
+            }
     }
 
     /**
@@ -357,6 +431,18 @@ private constructor(
                 /** Please see ADataSpace::ADATASPACE_ADOBE_RGB (0xf3) */
                 @JvmField public val ADOBE_RGB: ColorSpace = ColorSpace(0xf3)
             }
+
+            override fun toString(): String =
+                when (this) {
+                    BT709 -> "BT709"
+                    BT601_PAL -> "BT601_PAL"
+                    BT2020 -> "BT2020"
+                    BT601_525 -> "BT601_525"
+                    DISPLAY_P3 -> "DISPLAY_P3"
+                    DCI_P3 -> "DCI_P3"
+                    ADOBE_RGB -> "ADOBE_RGB"
+                    else -> "UNKNOWN ($value)"
+                }
         }
 
         /**
@@ -396,6 +482,17 @@ private constructor(
                  */
                 @JvmField public val HLG: ColorTransfer = ColorTransfer(6)
             }
+
+            override fun toString(): String =
+                when (this) {
+                    LINEAR -> "LINEAR"
+                    SRGB -> "SRGB"
+                    SDR -> "SDR"
+                    GAMMA_2_2 -> "GAMMA_2_2"
+                    ST2084 -> "ST2084"
+                    HLG -> "HLG"
+                    else -> "UNKNOWN ($value)"
+                }
         }
 
         /**
@@ -411,6 +508,13 @@ private constructor(
                 /** Please see android.media.MedaiFormat.COLOR_RANGE_LIMITED */
                 @JvmField public val LIMITED: ColorRange = ColorRange(2)
             }
+
+            override fun toString(): String =
+                when (this) {
+                    FULL -> "FULL"
+                    LIMITED -> "LIMITED"
+                    else -> "UNKNOWN ($value)"
+                }
         }
 
         public companion object {
@@ -573,7 +677,6 @@ private constructor(
         /**
          * Factory method for SurfaceEntity.
          *
-         * @param perceptionRuntime An ARCore PerceptionRuntime
          * @param sceneRuntime SceneRuntime to use.
          * @param renderingRuntime RenderingRuntime to use.
          * @param entityRegistry A SceneCore [EntityRegistry]
@@ -593,10 +696,8 @@ private constructor(
          *   [Scene]'s [ActivitySpace].
          * @return a SurfaceEntity instance
          */
-        @Suppress("RestrictedApiAndroidX")
         internal fun create(
             session: Session,
-            perceptionRuntime: PerceptionRuntime,
             renderingRuntime: RenderingRuntime,
             stereoMode: StereoMode = StereoMode.MONO,
             mediaBlendingMode: MediaBlendingMode = MediaBlendingMode.TRANSPARENT,
@@ -654,8 +755,11 @@ private constructor(
          *   surface should support Widevine DRM.
          * @param superSampling The [SuperSampling] which describes whether super sampling is
          *   enabled for the surface.
-         * @param parent Parent entity. If `null`, the entity is created but not attached to the
-         *   scene graph and will not be visible until a parent is set. The default value is `null`.
+         * @param parent Parent entity. Defaults to `null`. If `null`, the entity is created but not
+         *   attached to the scene graph, meaning it will be invisible. If a parent entity (e.g.,
+         *   [ActivitySpace] or any other [Entity] already present in the scene) is assigned later,
+         *   the entity will become visible (provided it is enabled). This allows for [Entity]
+         *   pre-configuration before making it visible.
          * @return a SurfaceEntity instance
          */
         @MainThread
@@ -672,7 +776,6 @@ private constructor(
         ): SurfaceEntity =
             SurfaceEntity.create(
                 session,
-                session.perceptionRuntime,
                 session.renderingRuntime,
                 stereoMode,
                 MediaBlendingMode.TRANSPARENT,
@@ -698,8 +801,11 @@ private constructor(
          *   enabled for the surface. The default value is [SuperSampling.PENTAGON].
          * @param surfaceProtection The [SurfaceProtection] which describes whether the hosted
          *   surface should support Widevine DRM. The default value is [SurfaceProtection.NONE].
-         * @param parent Parent entity. If `null`, the entity is created but not attached to the
-         *   scene graph and will not be visible until a parent is set. The default value is `null`.
+         * @param parent Parent entity. Defaults to `null`. If `null`, the entity is created but not
+         *   attached to the scene graph, meaning it will be invisible. If a parent entity (e.g.,
+         *   [ActivitySpace] or any other [Entity] already present in the scene) is assigned later,
+         *   the entity will become visible (provided it is enabled). This allows for [Entity]
+         *   pre-configuration before making it visible.
          * @return a SurfaceEntity instance
          */
         @MainThread
@@ -717,7 +823,6 @@ private constructor(
         ): SurfaceEntity =
             SurfaceEntity.create(
                 session,
-                session.perceptionRuntime,
                 session.renderingRuntime,
                 stereoMode,
                 mediaBlendingMode,
@@ -954,8 +1059,8 @@ private constructor(
     /**
      * Gets the perceived resolution of the entity in the provided [RenderViewpoint].
      *
-     * This API is only intended for use in Full Space Mode and will return
-     * [PerceivedResolutionResult.InvalidRenderViewpoint] in Home Space Mode.
+     * This API is only intended for use in Full Space and will return
+     * [PerceivedResolutionResult.InvalidRenderViewpoint] in Home Space.
      *
      * The entity's own rotation and the camera's viewing direction are disregarded; this value
      * represents the dimensions of the entity on the camera view if its largest surface was facing

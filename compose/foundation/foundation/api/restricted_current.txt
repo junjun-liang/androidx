@@ -159,8 +159,11 @@ package androidx.compose.foundation {
     property public boolean isClearNestedScrollCoroutineScopeFixEnabled;
     property public boolean isConcurrentTextFieldSelectionFixEnabled;
     property public boolean isDragNodeOffsetDoubleCountingFixEnabled;
+    property public boolean isDraggableVelocityTrackerFixEnabled;
     property public boolean isInheritedTextStyleEnabled;
     property public boolean isInteractionSoundEffectOnClickEnabled;
+    property public boolean isMouseSelectionBetweenTextEnabled;
+    property public boolean isMultiLaneCacheWindowEnabled;
     property public boolean isNewContextMenuEnabled;
     property public boolean isPausableCompositionInPrefetchEnabled;
     property public boolean isReverseLayoutNestedScrollConnectionInPagerFixEnabled;
@@ -177,8 +180,11 @@ package androidx.compose.foundation {
     field public static boolean isClearNestedScrollCoroutineScopeFixEnabled;
     field public static boolean isConcurrentTextFieldSelectionFixEnabled;
     field public static boolean isDragNodeOffsetDoubleCountingFixEnabled;
+    field public static boolean isDraggableVelocityTrackerFixEnabled;
     field public static boolean isInheritedTextStyleEnabled;
     field public static boolean isInteractionSoundEffectOnClickEnabled;
+    field public static boolean isMouseSelectionBetweenTextEnabled;
+    field public static boolean isMultiLaneCacheWindowEnabled;
     field public static boolean isNewContextMenuEnabled;
     field public static boolean isPausableCompositionInPrefetchEnabled;
     field public static boolean isReverseLayoutNestedScrollConnectionInPagerFixEnabled;
@@ -633,9 +639,9 @@ package androidx.compose.foundation.gestures {
   public static final class BringIntoViewSpec.Companion {
   }
 
-  @SuppressCompatibility public final class BringIntoViewSpec_androidKt {
-    method @InaccessibleFromKotlin @SuppressCompatibility @androidx.compose.foundation.ExperimentalFoundationApi public static androidx.compose.runtime.ProvidableCompositionLocal<androidx.compose.foundation.gestures.BringIntoViewSpec> getLocalBringIntoViewSpec();
-    property @SuppressCompatibility @androidx.compose.foundation.ExperimentalFoundationApi public static androidx.compose.runtime.ProvidableCompositionLocal<androidx.compose.foundation.gestures.BringIntoViewSpec> LocalBringIntoViewSpec;
+  public final class BringIntoViewSpec_androidKt {
+    method @InaccessibleFromKotlin public static androidx.compose.runtime.ProvidableCompositionLocal<androidx.compose.foundation.gestures.BringIntoViewSpec> getLocalBringIntoViewSpec();
+    property public static androidx.compose.runtime.ProvidableCompositionLocal<androidx.compose.foundation.gestures.BringIntoViewSpec> LocalBringIntoViewSpec;
   }
 
   public interface Drag2DScope {
@@ -2951,13 +2957,15 @@ package androidx.compose.foundation.text.input {
     method @BytecodeOnly public long getOriginalSelection-d9O1mEE();
     method @InaccessibleFromKotlin public CharSequence getOriginalText();
     method @InaccessibleFromKotlin public androidx.compose.ui.text.ParagraphStyle getParagraphStyle(androidx.compose.foundation.text.input.TrackedRange<androidx.compose.ui.text.ParagraphStyle>);
-    method public java.util.List<androidx.compose.foundation.text.input.TrackedRange<androidx.compose.ui.text.ParagraphStyle>> getParagraphStyles(int start, int end);
+    method @KotlinOnly public java.util.List<androidx.compose.foundation.text.input.TrackedRange<androidx.compose.ui.text.ParagraphStyle>> getParagraphStyles(androidx.compose.ui.text.TextRange range);
+    method @BytecodeOnly public java.util.List<androidx.compose.foundation.text.input.TrackedRange<androidx.compose.ui.text.ParagraphStyle!>!> getParagraphStyles-5zc-tL8(long);
     method @BytecodeOnly public long getSelection-d9O1mEE();
     method @InaccessibleFromKotlin public androidx.compose.ui.text.SpanStyle getSpanStyle(androidx.compose.foundation.text.input.TrackedRange<androidx.compose.ui.text.SpanStyle>);
-    method public java.util.List<androidx.compose.foundation.text.input.TrackedRange<androidx.compose.ui.text.SpanStyle>> getSpanStyles(int start, int end);
+    method @KotlinOnly public java.util.List<androidx.compose.foundation.text.input.TrackedRange<androidx.compose.ui.text.SpanStyle>> getSpanStyles(androidx.compose.ui.text.TextRange range);
+    method @BytecodeOnly public java.util.List<androidx.compose.foundation.text.input.TrackedRange<androidx.compose.ui.text.SpanStyle!>!> getSpanStyles-5zc-tL8(long);
     method @BytecodeOnly public long getTextRange--jx7JFs(androidx.compose.foundation.text.input.TrackedRange<? extends java.lang.Object!>);
-    method @InaccessibleFromKotlin public boolean getValid(androidx.compose.foundation.text.input.TrackedRange<? extends java.lang.Object?>);
     method @InaccessibleFromKotlin public boolean hasSelection();
+    method @InaccessibleFromKotlin public boolean isValid(androidx.compose.foundation.text.input.TrackedRange<? extends java.lang.Object?>);
     method public void placeCursorAfterCharAt(int index);
     method public void placeCursorBeforeCharAt(int index);
     method public boolean removeStyle(androidx.compose.foundation.text.input.TrackedRange<? extends java.lang.Object?> trackedRange);
@@ -2971,6 +2979,7 @@ package androidx.compose.foundation.text.input {
     property @SuppressCompatibility @androidx.compose.foundation.ExperimentalFoundationApi public androidx.compose.foundation.text.input.TextFieldBuffer.ChangeList changes;
     property public androidx.compose.foundation.text.input.ExpandPolicy androidx.compose.foundation.text.input.TrackedRange<? extends java.lang.Object?>.expandPolicy;
     property public boolean hasSelection;
+    property public boolean androidx.compose.foundation.text.input.TrackedRange<? extends java.lang.Object?>.isValid;
     property public int length;
     property public androidx.compose.ui.text.TextRange originalSelection;
     property public CharSequence originalText;
@@ -2978,7 +2987,6 @@ package androidx.compose.foundation.text.input {
     property public androidx.compose.ui.text.TextRange selection;
     property public androidx.compose.ui.text.SpanStyle androidx.compose.foundation.text.input.TrackedRange<androidx.compose.ui.text.SpanStyle>.spanStyle;
     property public androidx.compose.ui.text.TextRange androidx.compose.foundation.text.input.TrackedRange<? extends java.lang.Object?>.textRange;
-    property public boolean androidx.compose.foundation.text.input.TrackedRange<? extends java.lang.Object?>.valid;
   }
 
   public static interface TextFieldBuffer.ChangeList {
@@ -3063,8 +3071,10 @@ package androidx.compose.foundation.text.input {
   }
 
   public interface TextFieldTextStyles {
-    method public java.util.List<androidx.compose.ui.text.AnnotatedString.Range<androidx.compose.ui.text.ParagraphStyle>> getParagraphStyles(int start, int end);
-    method public java.util.List<androidx.compose.ui.text.AnnotatedString.Range<androidx.compose.ui.text.SpanStyle>> getSpanStyles(int start, int end);
+    method @KotlinOnly public java.util.List<androidx.compose.ui.text.AnnotatedString.Range<androidx.compose.ui.text.ParagraphStyle>> getParagraphStyles(androidx.compose.ui.text.TextRange range);
+    method @BytecodeOnly public java.util.List<androidx.compose.ui.text.AnnotatedString.Range<androidx.compose.ui.text.ParagraphStyle!>!> getParagraphStyles-5zc-tL8(long);
+    method @KotlinOnly public java.util.List<androidx.compose.ui.text.AnnotatedString.Range<androidx.compose.ui.text.SpanStyle>> getSpanStyles(androidx.compose.ui.text.TextRange range);
+    method @BytecodeOnly public java.util.List<androidx.compose.ui.text.AnnotatedString.Range<androidx.compose.ui.text.SpanStyle!>!> getSpanStyles-5zc-tL8(long);
   }
 
   @kotlin.jvm.JvmInline public final value class TextObfuscationMode {
@@ -3078,9 +3088,11 @@ package androidx.compose.foundation.text.input {
   public static final class TextObfuscationMode.Companion {
     method @BytecodeOnly public int getHidden-vTwcZD0();
     method @BytecodeOnly public int getRevealLastTyped-vTwcZD0();
+    method @BytecodeOnly public int getSystem-vTwcZD0();
     method @BytecodeOnly public int getVisible-vTwcZD0();
     property public androidx.compose.foundation.text.input.TextObfuscationMode Hidden;
     property public androidx.compose.foundation.text.input.TextObfuscationMode RevealLastTyped;
+    property public androidx.compose.foundation.text.input.TextObfuscationMode System;
     property public androidx.compose.foundation.text.input.TextObfuscationMode Visible;
   }
 

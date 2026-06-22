@@ -32,11 +32,11 @@ import androidx.pdf.PdfDocument
 import androidx.pdf.PdfDocument.Companion.LINEARIZATION_STATUS_UNKNOWN
 import androidx.pdf.PdfFeature
 import androidx.pdf.RenderParams
-import androidx.pdf.annotation.KeyedPdfAnnotation
-import androidx.pdf.annotation.models.ImagePdfObject
-import androidx.pdf.annotation.models.KeyedPdfObject
-import androidx.pdf.annotation.models.PathPdfObject
-import androidx.pdf.annotation.models.PdfObject
+import androidx.pdf.annotation.content.ImagePdfObject
+import androidx.pdf.annotation.content.KeyedPdfAnnotation
+import androidx.pdf.annotation.content.KeyedPdfObject
+import androidx.pdf.annotation.content.PathPdfObject
+import androidx.pdf.annotation.content.PdfObject
 import androidx.pdf.content.PageMatchBounds
 import androidx.pdf.content.PageSelection
 import androidx.pdf.content.PdfPageGotoLinkContent
@@ -93,11 +93,6 @@ internal open class FakePdfDocument(
     private val annotationsPerPage: Map<Int, List<KeyedPdfAnnotation>> = mapOf(),
     private val pageObjectsPerPage: Map<Int, List<KeyedPdfObject>> = mapOf(),
     private val exceptionToThrow: Exception? = null,
-    @Deprecated(
-        "Deprecated, Use linearizationStatus instead",
-        replaceWith = ReplaceWith("linearizationStatus"),
-    )
-    override val isLinearized: Boolean = false,
 ) : PdfDocument {
     override val pageCount: Int = pages.size
 

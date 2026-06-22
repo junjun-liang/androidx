@@ -339,11 +339,7 @@ public interface IcingOptionsConfig {
                         (Flags.enableCompressionThreshold() || isVmEnabled)
                                 ? Math.max(0, getCompressionThresholdBytes()) : 0)
                 .setCompressionMemLevel(getCompressionMemLevel())
-                .setEnableProtoLogNewHeaderFormat(true)
-                .setEnableReusableDecompressionBuffer(true)
                 .setEmbeddingIndexNumShards(Math.max(1, getEmbeddingIndexNumShards()))
-                .setEnableSchemaTypeIdOptimization(
-                        Flags.enableSchemaTypeIdOptimization())
                 .setEnableOptimizeImprovements(
                         Flags.enableOptimizeImprovements())
                 .setEnableRepeatedFieldJoins(enableRepeatedFieldJoins())
@@ -352,6 +348,9 @@ public interface IcingOptionsConfig {
                         Flags.enableSkipSetSchemaTypeEqualityCheck())
                 .setEnableBackgroundTaskScheduler(enableIcingBackgroundTaskScheduler())
                 .setEnableSchemaDefinitionDeduping(Flags.enableSchemaDefinitionDeduping())
+                .setEnableDatabaseStablenessLog(Flags.enableDatabaseStablenessLog())
+                .setEnableAccountPropertyIncompatibilityCheck(
+                        Flags.enableAccountPropertyIncompatibilityCheck())
                 .build();
     }
 }

@@ -42,6 +42,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.annotation.FrequentlyChangingValue
+import androidx.compose.runtime.annotation.RememberInComposition
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -111,6 +113,10 @@ import kotlinx.coroutines.launch
  * Example of a sample picker group with an hour and minute picker (24 hour format):
  *
  * @sample androidx.wear.compose.material3.samples.PickerGroupSample
+ *
+ * ![PickerGroupSample Composite
+ * Image](https://developer.android.com/wear/images/design/WearComposeM3_PickerGroupSample_CompositeImage.png)
+ *
  * @param state The state of the component
  * @param contentDescription A block which computes text used by accessibility services to describe
  *   what the selected option represents. This text should be localized, such as by using
@@ -345,7 +351,9 @@ public fun rememberPickerState(
  * @param shouldRepeatOptions if true (the default), the options will be repeated.
  */
 @Stable
-public class PickerState(
+public class PickerState
+@RememberInComposition
+constructor(
     @IntRange(from = 1) initialNumberOfOptions: Int,
     @IntRange(from = 0) initiallySelectedIndex: Int = 0,
     @get:Suppress("GetterSetterNames") public val shouldRepeatOptions: Boolean = true,
@@ -374,6 +382,7 @@ public class PickerState(
 
     /** Index of the selected option (i.e. at the center). */
     public val selectedOptionIndex: Int
+        @FrequentlyChangingValue
         get() = (scalingLazyListState.centerItemIndex + optionsOffset) % numberOfOptions
 
     /**

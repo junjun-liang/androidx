@@ -41,6 +41,7 @@ import androidx.xr.compose.subspace.SpatialRow
 import androidx.xr.compose.subspace.semantics.testTag
 import androidx.xr.compose.testing.SubspaceTestingActivity
 import androidx.xr.compose.testing.onSubspaceNodeWithTag
+import androidx.xr.runtime.Config
 import androidx.xr.runtime.PlaneTrackingMode
 import androidx.xr.runtime.Session
 import androidx.xr.runtime.SessionCreateSuccess
@@ -52,7 +53,7 @@ import androidx.xr.runtime.math.Quaternion
 import androidx.xr.runtime.math.Ray
 import androidx.xr.runtime.math.Vector3
 import androidx.xr.runtime.testing.math.assertPose
-import androidx.xr.scenecore.AnchorEntity
+import androidx.xr.scenecore.AnchorSpace
 import androidx.xr.scenecore.MovableComponent
 import androidx.xr.scenecore.Space
 import androidx.xr.scenecore.runtime.MoveEvent
@@ -67,6 +68,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -103,11 +105,15 @@ class AnchorableModifierTest {
     @Suppress("DEPRECATION")
     // TODO: b/494305963 Remove references to arcore-testing Fakes
     fun setup() {
-        val sessionCreateResult = Session.create(composeTestRule.activity, testDispatcher)
+        val sessionCreateResult = runBlocking {
+            Session.create(composeTestRule.activity, testDispatcher)
+        }
         assertThat(sessionCreateResult).isInstanceOf(SessionCreateSuccess::class.java)
         session = (sessionCreateResult as SessionCreateSuccess).session
         session.configure(
-            config = session.config.copy(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL)
+            Config.Builder(session.config)
+                .setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL)
+                .build()
         )
         session.runtimes
             .filterIsInstance<androidx.xr.arcore.testing.FakePerceptionRuntime>()
@@ -597,7 +603,7 @@ class AnchorableModifierTest {
                 getRotationMatrixFromAxes(expectedPanelX, expectedPanelY, planeNormal).rotation
             val expectedPose = Pose(expectedTranslation, expectedRotation)
             assertPose(entity.getPose(Space.ACTIVITY), expectedPose, TOLERANCE)
-            assertThat(entity.parent).isInstanceOf(AnchorEntity::class.java)
+            assertThat(entity.parent).isInstanceOf(AnchorSpace::class.java)
         }
     }
 
@@ -671,7 +677,7 @@ class AnchorableModifierTest {
                 getRotationMatrixFromAxes(expectedPanelX, expectedPanelY, planeNormal).rotation
             val expectedPose = Pose(expectedTranslation, expectedRotation)
             assertPose(entity.getPose(Space.ACTIVITY), expectedPose, TOLERANCE)
-            assertThat(entity.parent).isInstanceOf(AnchorEntity::class.java)
+            assertThat(entity.parent).isInstanceOf(AnchorSpace::class.java)
         }
     }
 

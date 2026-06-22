@@ -19,9 +19,11 @@ package androidx.xr.compose.subspace
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.view.MotionEvent
 import android.view.View
 import android.view.View.MeasureSpec
 import android.view.ViewParent
+import android.widget.FrameLayout
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.CornerSize
@@ -33,7 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.currentComposer
-import androidx.compose.runtime.currentCompositeKeyHash
+import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCompositionContext
@@ -81,7 +83,6 @@ import androidx.xr.compose.subspace.node.ComposeSubspaceNode.Companion.SetMeasur
 import androidx.xr.compose.subspace.node.ComposeSubspaceNode.Companion.SetModifier
 import androidx.xr.compose.unit.DpVolumeSize
 import androidx.xr.compose.unit.IntVolumeSize
-import androidx.xr.compose.unit.Meter.Companion.millimeters
 import androidx.xr.compose.unit.VolumeConstraints
 import androidx.xr.runtime.math.FloatSize2d
 import androidx.xr.runtime.math.IntSize2d
@@ -89,6 +90,7 @@ import androidx.xr.runtime.math.Pose
 import androidx.xr.runtime.math.Vector3
 import androidx.xr.scenecore.ActivityPanelEntity
 import androidx.xr.scenecore.PanelEntity
+import androidx.xr.scenecore.scene
 
 private const val DEFAULT_SIZE_PX = 400
 
@@ -259,6 +261,8 @@ public class MovePolicy(
  *   the size change, and the API should proceed with changing the size of the object itself. If the
  *   callback is `null` (the default), the API will change the size of the object.
  */
+@Deprecated("Use SubspaceModifier.resizable() instead.")
+@Suppress("DEPRECATION")
 public class ResizePolicy(
     public val isEnabled: Boolean = true,
     public val minimumSize: DpVolumeSize = DpVolumeSize.Zero,
@@ -345,6 +349,7 @@ public class ResizePolicy(
  */
 @Composable
 @SubspaceComposable
+@Suppress("DEPRECATION", "ReferencesDeprecated")
 public fun <T : View> SpatialAndroidViewPanel(
     factory: (Context) -> T,
     modifier: SubspaceModifier = SubspaceModifier,
@@ -362,23 +367,34 @@ public fun <T : View> SpatialAndroidViewPanel(
             interactionPolicy = interactionPolicy,
         )
     val dialogManager = LocalDialogManager.current
-    val context = LocalContext.current
     val parentView = LocalView.current
 
     @Suppress("UnnecessaryLambdaCreation")
     AndroidViewPanel(
-        factory = { factory(context) },
-        modifier = finalModifier,
-        update = { view ->
-            if (dialogManager.isSpatialDialogActive.value) {
-                view.foreground = DEFAULT_SCRIM_ALPHA.toDrawable()
-                view.setOnClickListener { dialogManager.isSpatialDialogActive.value = false }
-            } else {
-                view.foreground = Color.TRANSPARENT.toDrawable()
-                view.setOnClickListener(null)
+        factory = { context ->
+            TouchBlockingFrameLayout(context).apply {
+                addView(
+                    factory(context),
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                    ),
+                )
             }
-            view.setViewTreeDisjointParent(parentView as? ViewParent ?: parentView.parent)
-            update(view)
+        },
+        modifier = finalModifier,
+        update = { wrapper ->
+            val isDialogActive = dialogManager.isSpatialDialogActive.value
+            wrapper.blockTouches = isDialogActive
+            if (isDialogActive) {
+                wrapper.foreground = DEFAULT_SCRIM_ALPHA.toDrawable()
+            } else {
+                wrapper.foreground = Color.TRANSPARENT.toDrawable()
+            }
+            wrapper.setViewTreeDisjointParent(parentView as? ViewParent ?: parentView.parent)
+
+            @Suppress("UNCHECKED_CAST") val innerView = wrapper.getChildAt(0) as T
+            update(innerView)
         },
         shape = shape,
     )
@@ -405,16 +421,19 @@ private fun <T : View> AndroidViewPanel(
     val view = remember { factory(context) }
     val session = checkNotNull(LocalSession.current) { "session must be initialized" }
     val density = LocalDensity.current
+
     val corePanelEntity: CorePanelEntity = remember {
         CorePanelEntity(
-                PanelEntity.create(
-                    session = session,
-                    view = view,
-                    dimensions = SpatialPanelDimensions.minimumPanelDimension,
-                    name = "ViewPanel:${view.id}",
-                    pose = Pose.Identity,
-                    parent = null,
-                )
+                pixelDensity = session.scene.virtualPixelDensity,
+                entity =
+                    PanelEntity.create(
+                        session = session,
+                        view = view,
+                        dimensions = SpatialPanelDimensions.minimumPanelDimension,
+                        name = "ViewPanel:${view.id}",
+                        pose = Pose.Identity,
+                        parent = null,
+                    ),
             )
             .also {
                 it.setShape(shape, density)
@@ -463,6 +482,7 @@ private fun <T : View> AndroidViewPanel(
  */
 @Composable
 @SubspaceComposable
+@Suppress("DEPRECATION", "ReferencesDeprecated")
 public fun SpatialPanel(
     modifier: SubspaceModifier = SubspaceModifier,
     shape: SpatialShape = SpatialPanelDefaults.shape,
@@ -478,16 +498,17 @@ public fun SpatialPanel(
             resizePolicy = resizePolicy,
             interactionPolicy = interactionPolicy,
         )
-    // TODO(b/474652577): Update from deprecated currentCompositeKey to currentCompositeKeyCode
-    //  once we update JXR Compose to Compile SDK 35
-    @Suppress("DEPRECATION") val localId = currentCompositeKeyHash
+
+    val localId = currentCompositeKeyHashCode
     val context = LocalContext.current
     val parentView = LocalView.current
     val compositionContext = rememberCompositionContext()
     val dialogManager = LocalDialogManager.current
     val isDialogActive = dialogManager.isSpatialDialogActive.value
     AndroidViewPanel(
-        factory = { spatialComposeView(parentView, context, compositionContext, localId) },
+        factory = {
+            spatialComposeView(parentView, context, compositionContext, localId = localId)
+        },
         modifier = finalModifier,
         update = { composeView ->
             composeView.setContent {
@@ -503,9 +524,7 @@ public fun SpatialPanel(
                                     .matchParentSize() // This sizes the overlay without affecting
                                     // the parent's size.
                                     .pointerInput(Unit) {
-                                        detectTapGestures {
-                                            dialogManager.isSpatialDialogActive.value = false
-                                        }
+                                        detectTapGestures { /* Prevent clicks to compose */ }
                                     }
                         )
                     }
@@ -589,6 +608,7 @@ public fun SpatialPanel(
  */
 @Composable
 @SubspaceComposable
+@Suppress("DEPRECATION", "ReferencesDeprecated")
 public fun SpatialMainPanel(
     modifier: SubspaceModifier = SubspaceModifier,
     shape: SpatialShape = SpatialPanelDefaults.shape,
@@ -627,7 +647,7 @@ public fun SpatialMainPanel(
 @Composable
 private fun requestMainPanelOwnership(): State<CoreMainPanelEntity?> {
     val result = remember { mutableStateOf<CoreMainPanelEntity?>(null) }
-    val mainPanel = LocalComposeXrOwners.current?.coreMainPanelEntity ?: return result
+    val mainPanel = LocalComposeXrOwners.current.coreMainPanelEntity ?: return result
     // TODO(b/460459113) - For now we are using the decorView but we should be able to use LocalView
     //  once the view tree is properly connected via `setViewTreeDisjointParent`.
     val ownerQueue =
@@ -725,6 +745,7 @@ internal class MainPanelOwnerQueue(private val queue: ArrayDeque<() -> Unit> = A
  */
 @Composable
 @SubspaceComposable
+@Suppress("DEPRECATION", "ReferencesDeprecated")
 public fun SpatialActivityPanel(
     intent: Intent,
     modifier: SubspaceModifier = SubspaceModifier,
@@ -741,6 +762,7 @@ public fun SpatialActivityPanel(
             interactionPolicy = interactionPolicy,
         )
     val session = checkNotNull(LocalSession.current) { "session must be initialized" }
+    val pixelDensity = session.scene.virtualPixelDensity
     val dialogManager = LocalDialogManager.current
     val density = LocalDensity.current
 
@@ -756,7 +778,7 @@ public fun SpatialActivityPanel(
     }
 
     val corePanelEntity: CoreActivityPanelEntity = remember {
-        CoreActivityPanelEntity(activityPanelEntity).apply { enabled = false }
+        CoreActivityPanelEntity(pixelDensity, activityPanelEntity).apply { enabled = false }
     }
 
     SideEffect { corePanelEntity.setShape(shape, density) }
@@ -775,30 +797,29 @@ public fun SpatialActivityPanel(
             val localContext = LocalContext.current
             val scrimView =
                 remember(localContext) {
-                    View(localContext).apply {
-                        foreground = DEFAULT_SCRIM_ALPHA.toDrawable()
-                        setOnClickListener { dialogManager.isSpatialDialogActive.value = false }
-                    }
+                    View(localContext).apply { foreground = DEFAULT_SCRIM_ALPHA.toDrawable() }
                 }
 
             val entityName = "ScrimPanel"
             val scrimPanelEntity by
-                remember(session, scrimView) {
+                remember(scrimView) {
                     disposableValueOf(
                         CorePanelEntity(
-                                PanelEntity.create(
-                                    session = session,
-                                    view = scrimView,
-                                    pixelDimensions =
-                                        corePanelEntity.size.run { IntSize2d(width, height) },
-                                    name = entityName,
-                                    pose = Pose.Identity,
-                                    parent = activityPanelEntity,
-                                )
+                                pixelDensity = pixelDensity,
+                                entity =
+                                    PanelEntity.create(
+                                        session = session,
+                                        view = scrimView,
+                                        pixelDimensions =
+                                            corePanelEntity.size.run { IntSize2d(width, height) },
+                                        name = entityName,
+                                        pose = Pose.Identity,
+                                        parent = activityPanelEntity,
+                                    ),
                             )
                             .apply {
-                                poseInMeters =
-                                    Pose(translation = Vector3(0f, 0f, 10.millimeters.toM()))
+                                parent = corePanelEntity
+                                poseInMeters = Pose(translation = Vector3(0f, 0f, 0.01f))
                             }
                     ) {
                         it.dispose()
@@ -892,6 +913,7 @@ internal fun buildSpatialPanelModifier(
         }
 
     if (resizePolicy != null) {
+        @Suppress("DEPRECATION")
         finalModifier =
             finalModifier.resizable(
                 enabled = resizePolicy.isEnabled,
@@ -916,4 +938,12 @@ internal fun buildSpatialPanelModifier(
     }
 
     return finalModifier
+}
+
+private class TouchBlockingFrameLayout(context: Context) : FrameLayout(context) {
+    var blockTouches = false
+
+    override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
+        return blockTouches || super.onInterceptTouchEvent(ev)
+    }
 }

@@ -16,7 +16,7 @@
 
 package androidx.compose.remote.testing
 
-import androidx.compose.remote.creation.compose.action.ValueChange
+import androidx.compose.remote.creation.compose.action.valueChange
 import androidx.compose.remote.creation.compose.capture.RemoteCreationDisplayInfo
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteBox
@@ -51,13 +51,13 @@ class RemoteContentTestRuleScreenshotTest {
     @Test
     fun textValueChange() {
         remoteContentTestRule.setContent(
-            RemoteCreationDisplayInfo(width = 500, height = 500, densityDpi = 1)
+            RemoteCreationDisplayInfo(width = 500, height = 500, densityDpi = 160)
         ) {
             val text = rememberMutableRemoteString("Initial")
             RemoteBox(
                 modifier =
                     RemoteModifier.fillMaxSize()
-                        .clickable(ValueChange(text, "Updated".rs))
+                        .clickable(valueChange(text, "Updated".rs))
                         .background(Color.White),
                 contentAlignment = RemoteAlignment.Center,
             ) {

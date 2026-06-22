@@ -16,7 +16,7 @@
 
 package androidx.compose.remote.a11y
 
-import androidx.compose.remote.creation.compose.action.ValueChange
+import androidx.compose.remote.creation.compose.action.valueChange
 import androidx.compose.remote.creation.compose.capture.RecordingCanvas
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteArrangement
@@ -35,7 +35,7 @@ import androidx.compose.remote.creation.compose.state.rememberMutableRemoteInt
 import androidx.compose.remote.creation.compose.state.rememberMutableRemoteString
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
-import androidx.compose.remote.player.compose.test.utils.screenshot.rule.RemoteInteractionTestRule
+import androidx.compose.remote.player.compose.test.utils.RemoteInteractionTestRule
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.test.core.app.ApplicationProvider
@@ -124,7 +124,7 @@ class BasicA11yTest {
             RemoteBox(
                 modifier =
                     RemoteModifier.fillMaxSize()
-                        .clickable(ValueChange(text, "Updated".rs))
+                        .clickable(valueChange(text, "Updated".rs))
                         .background(Color.White),
                 contentAlignment = RemoteAlignment.Center,
             ) {
@@ -149,7 +149,7 @@ class BasicA11yTest {
             RemoteBox(
                 modifier =
                     RemoteModifier.fillMaxSize()
-                        .clickable(ValueChange(remoteInt, remoteInt + 1))
+                        .clickable(valueChange(remoteInt, remoteInt + 1))
                         .background(Color.White),
                 contentAlignment = RemoteAlignment.Center,
             ) {

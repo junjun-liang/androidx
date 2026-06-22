@@ -91,32 +91,27 @@ fun demoAnchorText(): ByteArray {
                 val textRightBaseline = remoteText("X Right baseline X")
                 val textLeftBaseline = remoteText("X Left baseline X")
 
-                conditionalOperations(RcConditionOp.Lt, t, dur.rf) {
-                    //                    drawTextAnchored(t1, v1, l1, 1f.rf, 1f.rf, 0)
-                    //                    drawTextAnchored(textLeftTop, v2, l1, (-1f).rf, 1f.rf, 0)
-                    //                    drawTextAnchored(textRightCenter, v1, l2, 1f.rf, 0f.rf, 0)
-                    //                    drawTextAnchored(textLeftCenter, v2, l2, (-1f).rf, 0f.rf,
-                    // 0)
-                    //                    drawTextAnchored(textRightBottom, v1, l3, 1f.rf, (-1f).rf,
-                    // 0)
-                    //                    drawTextAnchored(textLeftBottom, v2, l3, (-1f).rf,
-                    // (-1f).rf, 0)
-                    //                    drawTextAnchored(textRightBaseline, v1, l4, 1f.rf, 0f.rf,
-                    // flag2)
-                    //                    drawTextAnchored(textLeftBaseline, v2, l4, (-1f).rf,
-                    // 0f.rf, flag2)
+                ifTrue(t lt dur) {
+                    drawTextAnchored(t1, v1, l1, 1f.rf, 1f.rf, 0)
+                    drawTextAnchored(textLeftTop, v2, l1, (-1f).rf, 1f.rf, 0)
+                    drawTextAnchored(textRightCenter, v1, l2, 1f.rf, 0f.rf, 0)
+                    drawTextAnchored(textLeftCenter, v2, l2, (-1f).rf, 0f.rf, 0)
+                    drawTextAnchored(textRightBottom, v1, l3, 1f.rf, (-1f).rf, 0)
+                    drawTextAnchored(textLeftBottom, v2, l3, (-1f).rf, (-1f).rf, 0)
+                    drawTextAnchored(textRightBaseline, v1, l4, 1f.rf, 0f.rf, flag2)
+                    drawTextAnchored(textLeftBaseline, v2, l4, (-1f).rf, 0f.rf, flag2)
                 }
 
-                conditionalOperations(RcConditionOp.Gt, t, dur.rf) {
+                ifTrue(t gt dur) {
                     drawTextAnchored(strId, v1, l1, 1f.rf, 1f.rf, 0)
                     drawTextAnchored(strId, v1, l2, 1f.rf, 0f.rf, 0)
                     drawTextAnchored(strId, v1, l3, 1f.rf, (-1f).rf, 0)
                     drawTextAnchored(strId, v1, l4, 1f.rf, 0f.rf, flag2)
 
-                    conditionalOperations(RcConditionOp.Gt, t, (dur * 2f).rf) {
-                        applyPaint {
-                            setColor(Color.BLUE)
-                            setTextSize(128f)
+                    ifTrue(t gt (dur * 2f)) {
+                        paint {
+                            color(Color.BLUE)
+                            textSize(128f)
                         }
                     }
 
@@ -127,7 +122,7 @@ fun demoAnchorText(): ByteArray {
                     drawTextAnchored(strId, v2, l5, animatX, animatY, flag1)
                 }
 
-                applyPaint { setColor(Color.BLACK) }
+                paint { color(Color.BLACK) }
             }
         }
     }

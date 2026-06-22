@@ -36,13 +36,29 @@ import androidx.compose.ui.unit.isSpecified
 public class RemoteDp
 internal constructor(
     @get:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) public val value: RemoteFloat
-) : BaseRemoteState<Dp>() {
+) : BaseRemoteState<Dp>(RemoteStateInstanceKey()) {
     internal override val cacheKey: RemoteStateCacheKey
         get() = toPx().cacheKey
 
-    internal enum class OperationKey {
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    override fun toDebugString(): String {
+        val valKey = value.cacheKey
+        if (valKey is RemoteOperationCacheKey && valKey.op == OperationKey.ToDp) {
+            return "${valKey.args[0].toOperandString(100)}.toDp()"
+        }
+        return "${valKey.toOperandString(100)}.dp"
+    }
+
+    internal enum class OperationKey : DebuggableOperation {
         ToPx,
-        ToDp,
+        ToDp;
+
+        override fun toDebugString(args: List<RemoteStateCacheKey>): String {
+            return when (this) {
+                ToPx -> "${args[0].toOperandString(100)}.toPx()"
+                ToDp -> "${args[0].toOperandString(100)}.toDp()"
+            }
+        }
     }
 
     override val constantValueOrNull: Dp?

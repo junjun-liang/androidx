@@ -58,11 +58,14 @@ import androidx.pdf.content.ExternalLink
 import androidx.pdf.event.PdfTrackingEvent
 import androidx.pdf.event.RequestFailureEvent
 import androidx.pdf.models.FormEditInfo
+import androidx.pdf.ocr.OcrProvider
 import androidx.pdf.selection.Selection
+import androidx.pdf.util.Accessibility
 import androidx.pdf.util.AnnotationUtils
 import androidx.pdf.util.Uris
 import androidx.pdf.view.PdfContentLayout
 import androidx.pdf.view.PdfView
+import androidx.pdf.view.PdfView.FastScrollVisibility
 import androidx.pdf.view.ToolBoxView
 import androidx.pdf.view.search.PdfSearchView
 import androidx.pdf.viewer.PdfPasswordDialog
@@ -213,21 +216,6 @@ public open class PdfViewerFragment constructor() : Fragment() {
     }
 
     /**
-     * Invoked when the document has been fully loaded, processed, and the initial pages are
-     * displayed within the viewing area. This callback signifies that the document is ready for
-     * user interaction.
-     *
-     * <p>Note that this callback is dispatched only when the fragment is fully created and not yet
-     * destroyed, i.e., after [onCreate] has fully run and before [onDestroy] runs, and only on the
-     * main thread.
-     */
-    @Deprecated(
-        message =
-            "Use onLoadDocumentSuccess(PdfDocument) to directly access the loaded document instance."
-    )
-    public open fun onLoadDocumentSuccess() {}
-
-    /**
      * Invoked when the document has been fully loaded and processed.
      *
      * <p>Note that this callback is dispatched only when the fragment is fully created and not yet
@@ -237,10 +225,7 @@ public open class PdfViewerFragment constructor() : Fragment() {
      * @param document The [PdfDocument] instance representing the loaded PDF content. This
      *   reference will be valid till a new [documentUri] is set or the fragment is destroyed.
      */
-    public open fun onLoadDocumentSuccess(document: PdfDocument) {
-        // Trigger the deprecated parameterless callback to maintain backward compatibility
-        @Suppress("DEPRECATION") onLoadDocumentSuccess()
-    }
+    public open fun onLoadDocumentSuccess(document: PdfDocument) {}
 
     /**
      * Invoked when a problem arises during the loading process of the PDF document. This callback
@@ -273,6 +258,14 @@ public open class PdfViewerFragment constructor() : Fragment() {
      *   [androidx.pdf.viewer.fragment.PdfViewerFragment].
      */
     @ExperimentalPdfApi public open fun onPdfViewCreated(pdfView: PdfView) {}
+
+    /**
+     * Invoked when the [OcrProvider] is needed for recognizing text in image-based PDF content.
+     * Subclasses can override this method to provide a custom [OcrProvider] implementation.
+     *
+     * @return The [OcrProvider] instance to be used, or `null` if OCR is not supported or desired.
+     */
+    public open fun onCreateOcrProvider(): OcrProvider? = null
 
     @get:RestrictTo(RestrictTo.Scope.LIBRARY)
     protected open val documentViewModel: PdfDocumentViewModel by viewModels {
@@ -405,6 +398,8 @@ public open class PdfViewerFragment constructor() : Fragment() {
         if (stylingOptions != null) {
             applyPdfViewStyledAttributes(stylingOptions.containerStyleResId)
         }
+
+        documentViewModel.ocrProvider = onCreateOcrProvider()
 
         setupPdfView()
         setupToolbox()
@@ -582,6 +577,7 @@ public open class PdfViewerFragment constructor() : Fragment() {
         _pdfView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
             toolboxGestureEventProcessor.processEvent(ScrollTo(scrollY))
         }
+        _pdfView.setOcrProvider(documentViewModel.ocrProvider)
         _pdfView.requestFailedListener =
             object : PdfView.EventListener {
                 override fun onEvent(event: PdfTrackingEvent) {
@@ -657,8 +653,16 @@ public open class PdfViewerFragment constructor() : Fragment() {
                             fastScrollVisibility = PdfView.FastScrollVisibility.ALWAYS_HIDE
                         }
                     } else {
+                        val isAccessibilityEnabled: Boolean =
+                            Accessibility.get().isAccessibilityEnabled(requireContext())
+
                         // Let PdfView internally control fast scroller visibility.
-                        _pdfView.fastScrollVisibility = PdfView.FastScrollVisibility.AUTO_HIDE
+                        _pdfView.fastScrollVisibility =
+                            if (isAccessibilityEnabled) {
+                                FastScrollVisibility.ALWAYS_SHOW
+                            } else {
+                                FastScrollVisibility.AUTO_HIDE
+                            }
                     }
                 }
             }

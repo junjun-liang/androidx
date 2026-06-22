@@ -36,6 +36,7 @@ import androidx.camera.camera2.pipe.testing.FakeCaptureSequenceProcessor.Compani
 import androidx.camera.camera2.pipe.testing.FakeCaptureSequenceProcessor.Companion.requiredParameters
 import androidx.camera.camera2.pipe.testing.FakeMetadata.Companion.TEST_KEY
 import androidx.camera.camera2.pipe.testing.FakeSurfaces
+import androidx.camera.camera2.pipe.testing.HighEndDeviceTemplate
 import androidx.testutils.assertThrows
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
@@ -70,7 +71,7 @@ class GraphLoopTest {
     private val requestListener2: Request.Listener = mock<Request.Listener>()
     private val requestListener3: Request.Listener = mock<Request.Listener>()
 
-    private val fakeCameraMetadata = FakeCameraMetadata()
+    private val fakeCameraMetadata = FakeCameraMetadata.fromTemplate(HighEndDeviceTemplate)
     private val fakeCameraId = fakeCameraMetadata.camera
     private val stream1 = StreamId(1)
     private val stream2 = StreamId(2)
@@ -1229,6 +1230,38 @@ class GraphLoopTest {
             assertThat(csp1.events[3].requests).containsExactly(request2)
             assertThat(csp1.events[3].graphParameters).isEmpty()
             assertThat(csp1.events[3].requiredParameters).containsEntry(TEST_KEY, 1)
+        }
+
+    @Test
+    fun graph3AParametersPropagateNullParameters() =
+        testScope.runTest {
+            graphLoop.requestProcessor = grp1
+            graphLoop.repeatingRequest = request1
+            advanceUntilIdle()
+
+            graphLoop.graph3AParameters = mapOf(TEST_KEY to null)
+            advanceUntilIdle()
+
+            assertThat(csp1.events.size).isEqualTo(2)
+            assertThat(csp1.events[1].isRepeating).isTrue()
+            assertThat(csp1.events[1].requiredParameters).containsKey(TEST_KEY)
+            assertThat(csp1.events[1].requiredParameters[TEST_KEY]).isNull()
+        }
+
+    @Test
+    fun triggerCommandsPropagateNullParameters() =
+        testScope.runTest {
+            graphLoop.requestProcessor = grp1
+            graphLoop.repeatingRequest = request1
+            advanceUntilIdle()
+
+            graphLoop.trigger(mapOf(TEST_KEY to null))
+            advanceUntilIdle()
+
+            assertThat(csp1.events.size).isEqualTo(2)
+            assertThat(csp1.events[1].isCapture).isTrue()
+            assertThat(csp1.events[1].requiredParameters).containsKey(TEST_KEY)
+            assertThat(csp1.events[1].requiredParameters[TEST_KEY]).isNull()
         }
 
     @Test

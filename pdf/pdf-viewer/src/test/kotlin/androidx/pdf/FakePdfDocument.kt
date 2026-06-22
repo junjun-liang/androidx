@@ -29,11 +29,11 @@ import android.util.SparseArray
 import androidx.annotation.OpenForTesting
 import androidx.annotation.RequiresExtension
 import androidx.pdf.PdfDocument.Companion.LINEARIZATION_STATUS_UNKNOWN
-import androidx.pdf.annotation.KeyedPdfAnnotation
-import androidx.pdf.annotation.models.ImagePdfObject
-import androidx.pdf.annotation.models.KeyedPdfObject
-import androidx.pdf.annotation.models.PathPdfObject
-import androidx.pdf.annotation.models.PdfObject
+import androidx.pdf.annotation.content.ImagePdfObject
+import androidx.pdf.annotation.content.KeyedPdfAnnotation
+import androidx.pdf.annotation.content.KeyedPdfObject
+import androidx.pdf.annotation.content.PathPdfObject
+import androidx.pdf.annotation.content.PdfObject
 import androidx.pdf.content.PageMatchBounds
 import androidx.pdf.content.PageSelection
 import androidx.pdf.content.PdfPageGotoLinkContent
@@ -57,11 +57,6 @@ import kotlinx.coroutines.withTimeout
 internal open class FakePdfDocument(
     internal val pages: List<Point?> = listOf(Point(600, 800)),
     override val formType: Int = PDF_FORM_TYPE_NONE,
-    @Deprecated(
-        "Deprecated, Use linearizationStatus instead",
-        replaceWith = ReplaceWith("linearizationStatus"),
-    )
-    override val isLinearized: Boolean = false,
     override val renderParams: RenderParams = RenderParams(RenderParams.RENDER_MODE_FOR_DISPLAY),
     private val searchResults: SparseArray<List<PageMatchBounds>> = SparseArray(),
     override val uri: Uri = Uri.parse("content://test.app/document.pdf"),
@@ -407,7 +402,7 @@ internal open class FakePdfDocument(
             )
 
         fun getSampleImagePdfObject(): ImagePdfObject {
-            val bounds = RectF(0f, 100f, 0f, 100f)
+            val bounds = RectF(0f, 0f, 100f, 100f)
             val bitmap = Bitmap.createBitmap(500, 500, Bitmap.Config.ARGB_8888)
             return ImagePdfObject(bitmap, bounds)
         }

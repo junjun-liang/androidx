@@ -76,17 +76,6 @@ internal constructor(
         public val imageBasedLightingAsset: ImageBasedLightingAsset?
 
         /**
-         * Legacy property for the preferred image-based lighting for the environment based on a
-         * pre-loaded [ExrImage].
-         */
-        @Deprecated(
-            message = "ExrImage is being replaced by ImageBasedLightingAsset.",
-            replaceWith = ReplaceWith("imageBasedLightingAsset"),
-        )
-        @get:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-        public val exrImage: ExrImage?
-
-        /**
          * The preferred geometry for the environment based on a pre-loaded [GltfModel]. The
          * geometry can include a skybox texture for the horizon of the environment.
          */
@@ -106,25 +95,7 @@ internal constructor(
             imageBasedLightingAsset: ImageBasedLightingAsset?,
             geometry: GltfModel?,
         ) {
-            this.exrImage = null
             this.imageBasedLightingAsset = imageBasedLightingAsset
-            this.geometry = geometry
-            this.geometryEntity = null
-        }
-
-        /**
-         * Legacy internal constructor for the spatial environment preference.
-         *
-         * @param exrImage The preferred image based lighting for the environment.
-         * @param geometry The preferred geometry with optional skybox texture for the environment.
-         */
-        @Deprecated(
-            message = "Use the constructor that takes an ImageBasedLightingAsset asset instead."
-        )
-        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-        public constructor(exrImage: ExrImage?, geometry: GltfModel?) {
-            this.imageBasedLightingAsset = null
-            this.exrImage = exrImage
             this.geometry = geometry
             this.geometryEntity = null
         }
@@ -136,8 +107,6 @@ internal constructor(
             geometryEntity: GltfModelEntity?,
         ) {
             this.imageBasedLightingAsset = imageBasedLightingAsset
-            // Populate the legacy property too so old clients don't read 'null'.
-            this.exrImage = imageBasedLightingAsset?.image?.let { ExrImage(null, it) }
             this.geometry = geometry
             this.geometryEntity = geometryEntity
         }
@@ -147,14 +116,12 @@ internal constructor(
             if (javaClass != other?.javaClass) return false
             other as SpatialEnvironmentPreference
             return imageBasedLightingAsset == other.imageBasedLightingAsset &&
-                exrImage == other.exrImage &&
                 geometry == other.geometry &&
                 geometryEntity == other.geometryEntity
         }
 
         override fun hashCode(): Int {
             var result = imageBasedLightingAsset?.hashCode() ?: 0
-            result = 31 * result + (exrImage?.hashCode() ?: 0)
             result = 31 * result + (geometry?.hashCode() ?: 0)
             result = 31 * result + (geometryEntity?.hashCode() ?: 0)
             return result
@@ -215,23 +182,6 @@ internal constructor(
      *
      * @param listener The [Consumer<Float>] to be added to listen for passthrough opacity changes.
      */
-    // TODO - b/502272748: Cleanup deprecated listener methods
-    @Deprecated(
-        "Use addPassthroughOpacityChangedListener",
-        replaceWith = ReplaceWith("addPassthroughOpacityChangedListener()"),
-    )
-    @RestrictTo(Scope.LIBRARY_GROUP)
-    public fun addOnPassthroughOpacityChangedListener(listener: Consumer<Float>): Unit =
-        addPassthroughOpacityChangedListener(listener)
-
-    /**
-     * Notifies an application when the user visible passthrough state changes, such as when the
-     * application enters or exits passthrough or when the passthrough opacity changes.
-     *
-     * This [listener] will be called on the Application's main thread.
-     *
-     * @param listener The [Consumer<Float>] to be added to listen for passthrough opacity changes.
-     */
     public fun addPassthroughOpacityChangedListener(listener: Consumer<Float>): Unit =
         addPassthroughOpacityChangedListener(HandlerExecutor.mainThreadExecutor, listener)
 
@@ -247,22 +197,6 @@ internal constructor(
     public fun addPassthroughOpacityChangedListener(executor: Executor, listener: Consumer<Float>) {
         rtEnvironment.addOnPassthroughOpacityChangedListener(executor, listener)
     }
-
-    /**
-     * Remove a listener previously added by [addPassthroughOpacityChangedListener].
-     *
-     * Remaining listeners are automatically removed when the SpatialEnvironment is destroyed.
-     *
-     * @param listener The previously-added [Consumer<Float>] listener to be removed.
-     */
-    // TODO - b/502272748: Cleanup deprecated listener methods
-    @Deprecated(
-        "Use removePassthroughOpacityChangedListener",
-        replaceWith = ReplaceWith("removePassthroughOpacityChangedListener()"),
-    )
-    @RestrictTo(Scope.LIBRARY_GROUP)
-    public fun removeOnPassthroughOpacityChangedListener(listener: Consumer<Float>): Unit =
-        removePassthroughOpacityChangedListener(listener)
 
     /**
      * Remove a listener previously added by [addPassthroughOpacityChangedListener].
@@ -305,7 +239,7 @@ internal constructor(
      * If the given [SpatialEnvironmentPreference] is not null, but all of its properties are null,
      * then the spatial environment will consist of a black void.
      *
-     * See [isPreferredSpatialEnvironmentActive] or the [addOnSpatialEnvironmentChangedListener]
+     * See [isPreferredSpatialEnvironmentActive] or the [addSpatialEnvironmentChangedListener]
      * listeners to know when this preference becomes active.
      */
     public var preferredSpatialEnvironment: SpatialEnvironmentPreference?
@@ -324,32 +258,6 @@ internal constructor(
         set(value) {
             rtEnvironment.preferredSpatialEnvironment = value?.toRtSpatialEnvironmentPreference()
         }
-
-    /**
-     * Notifies an application whether the preferred spatial environment for the application is
-     * active.
-     *
-     * The environment will try to transition to the application environment when a non-null
-     * preference is set through [preferredSpatialEnvironment] and the application has the
-     * [SpatialCapability.APP_ENVIRONMENT] capability. The environment preferences will otherwise
-     * not be active.
-     *
-     * The listener consumes a boolean value that is true if the environment preference is active
-     * when the listener is notified.
-     *
-     * This listener will be invoked on the Application's main thread.
-     *
-     * @param listener The [Consumer<Boolean>] to be added to listen for spatial environment
-     *   changes.
-     */
-    // TODO - b/502272748: Cleanup deprecated listener methods
-    @Deprecated(
-        "Use addSpatialEnvironmentChangedListener",
-        replaceWith = ReplaceWith("addSpatialEnvironmentChangeListener()"),
-    )
-    @RestrictTo(Scope.LIBRARY_GROUP)
-    public fun addOnSpatialEnvironmentChangedListener(listener: Consumer<Boolean>): Unit =
-        addSpatialEnvironmentChangedListener(HandlerExecutor.mainThreadExecutor, listener)
 
     /**
      * Notifies an application whether the preferred spatial environment for the application is
@@ -397,23 +305,7 @@ internal constructor(
     }
 
     /**
-     * Remove a listener previously added by [addOnSpatialEnvironmentChangedListener].
-     *
-     * Remaining listeners are automatically removed when the SpatialEnvironment is destroyed.
-     *
-     * @param listener The previously-added [Consumer<Boolean>] listener to be removed.
-     */
-    // TODO - b/502272748: Cleanup deprecated listener methods
-    @Deprecated(
-        "Use removeSpatialEnvironmentChangedListener",
-        replaceWith = ReplaceWith("removeSpatialEnvironmentChangedListener()"),
-    )
-    @RestrictTo(Scope.LIBRARY_GROUP)
-    public fun removeOnSpatialEnvironmentChangedListener(listener: Consumer<Boolean>): Unit =
-        removeSpatialEnvironmentChangedListener(listener)
-
-    /**
-     * Remove a listener previously added by [addOnSpatialEnvironmentChangedListener].
+     * Remove a listener previously added by [addSpatialEnvironmentChangedListener].
      *
      * Remaining listeners are automatically removed when the SpatialEnvironment is destroyed.
      *
@@ -433,11 +325,10 @@ internal constructor(
     }
 }
 
-@Suppress("DEPRECATION")
 internal fun SpatialEnvironment.SpatialEnvironmentPreference.toRtSpatialEnvironmentPreference():
     RtSpatialEnvironmentPreference {
     return RtSpatialEnvironmentPreference(
-        imageBasedLightingAsset?.image ?: exrImage?.image,
+        imageBasedLightingAsset?.image,
         geometry?.model,
         geometryEntity?.rtGltfEntity,
     )

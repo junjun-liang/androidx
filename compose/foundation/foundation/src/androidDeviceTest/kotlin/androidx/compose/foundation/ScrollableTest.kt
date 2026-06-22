@@ -21,8 +21,10 @@ import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.rememberSplineBasedDecay
 import androidx.compose.foundation.gestures.DefaultFlingBehavior
+import androidx.compose.foundation.gestures.DifferentialVelocityTracker
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.ScrollConfig
 import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.ScrollableState
@@ -73,13 +75,16 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.indirect.IndirectPointerEventPrimaryDirectionalMotionAxis
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollDispatcher
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
@@ -97,8 +102,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsActions.ScrollBy
+import androidx.compose.ui.semantics.SemanticsActions.ScrollByOffset
 import androidx.compose.ui.test.ScrollWheel
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -117,6 +122,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performTrackpadInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
+import androidx.compose.ui.test.sendIndirectPointerInput
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeLeft
@@ -139,6 +145,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import kotlin.collections.first
 import kotlin.math.abs
 import kotlin.math.absoluteValue
 import kotlin.math.sign
@@ -248,7 +255,14 @@ class ScrollableTest {
         setScrollableContent(enableInitialFocus = true) {
             Modifier.scrollable(state = scrollableState, orientation = Orientation.Horizontal)
         }
-        rule.onNodeWithTag(scrollableBoxTag).sendIndirectSwipeForward(rule)
+        // Swipe forward
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(start = startOffsetForXAxisMovement, end = endOffsetForXAxisMovement)
+        }
         rule.runOnIdle {
             assertThat(total).isNonZero()
             // Swipe forward has a negative sign because indirect pointer events are inverted in
@@ -256,7 +270,14 @@ class ScrollableTest {
             assertThat(total.sign).isEqualTo(-1f)
         }
 
-        rule.onNodeWithTag(scrollableBoxTag).sendIndirectSwipeBackward(rule)
+        // Swipe backward
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(start = endOffsetForXAxisMovement, end = startOffsetForXAxisMovement)
+        }
         rule.runOnIdle { assertThat(total).isWithin(0.5f).of(0.0f) }
     }
 
@@ -357,7 +378,7 @@ class ScrollableTest {
             this.scroll(Offset(-100f, 0f)) // only moved horizontally
         }
 
-        var lastTotal =
+        val lastTotal =
             rule.runOnIdle {
                 assertThat(total).isGreaterThan(0)
                 total
@@ -468,7 +489,7 @@ class ScrollableTest {
             this.pan(Offset(100f, 0f)) // only moved horizontally
         }
 
-        var lastTotal =
+        val lastTotal =
             rule.runOnIdle {
                 assertThat(total).isGreaterThan(0)
                 total
@@ -618,7 +639,14 @@ class ScrollableTest {
                 orientation = Orientation.Horizontal,
             )
         }
-        rule.onNodeWithTag(scrollableBoxTag).sendIndirectSwipeForward(rule)
+        // Swipe forward
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(start = startOffsetForXAxisMovement, end = endOffsetForXAxisMovement)
+        }
 
         rule.runOnIdle {
             assertThat(total).isNonZero()
@@ -628,7 +656,14 @@ class ScrollableTest {
             assertThat(total.sign).isEqualTo(1f)
         }
 
-        rule.onNodeWithTag(scrollableBoxTag).sendIndirectSwipeBackward(rule)
+        // Swipe backward
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(start = endOffsetForXAxisMovement, end = startOffsetForXAxisMovement)
+        }
         rule.runOnIdle { assertThat(total).isWithin(0.5f).of(0.0f) }
     }
 
@@ -1011,7 +1046,7 @@ class ScrollableTest {
             this.pan(Offset(0f, 100f)) // only moved vertically
         }
 
-        var lastTotal =
+        val lastTotal =
             rule.runOnIdle {
                 assertThat(total).isGreaterThan(0)
                 total
@@ -1502,8 +1537,18 @@ class ScrollableTest {
 
         rule.runOnIdle { assertThat(focusRequester.requestFocus()).isTrue() }
 
-        // make the swipe really slow so it won't generate velocities
-        rule.onNodeWithTag(scrollableBoxTag).sendIndirectSwipeEvent(rule, delayTimeMills = 64L)
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(
+                start = startOffsetForXAxisMovement,
+                end = endOffsetForXAxisMovement,
+                durationMillis = 64L * defaultStepCount,
+            )
+        }
+
         val lastEqualDrag =
             rule.runOnIdle {
                 assertThat(innerDrag).isNonZero()
@@ -1806,7 +1851,17 @@ class ScrollableTest {
         }
         rule.runOnIdle { assertThat(focusRequester.requestFocus()).isTrue() }
 
-        rule.onNodeWithTag(scrollableBoxTag).sendIndirectSwipeEvent(rule, delayTimeMills = 64L)
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(
+                start = startOffsetForXAxisMovement,
+                end = endOffsetForXAxisMovement,
+                durationMillis = 64L * defaultStepCount,
+            )
+        }
 
         rule.runOnIdle {
             assertThat(innerDrag).isNonZero()
@@ -1959,7 +2014,13 @@ class ScrollableTest {
         rule.runOnIdle { assertThat(focusRequester.requestFocus()).isTrue() }
 
         // swipe again with velocity
-        rule.onNodeWithTag(scrollableBoxTag).sendIndirectSwipeForward(rule)
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(start = startOffsetForXAxisMovement, end = endOffsetForXAxisMovement)
+        }
 
         assertThat(innerDrag).isNonZero()
         assertThat(outerDrag).isNonZero()
@@ -2090,7 +2151,17 @@ class ScrollableTest {
 
         rule.runOnIdle { assertThat(focusRequester.requestFocus()).isTrue() }
 
-        rule.onNodeWithTag(scrollableBoxTag).sendIndirectSwipeEvent(rule, delayTimeMills = 300)
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(
+                start = startOffsetForXAxisMovement,
+                end = endOffsetForXAxisMovement,
+                durationMillis = 300L * defaultStepCount,
+            )
+        }
 
         val preFlingValue = rule.runOnIdle { value }
         rule.runOnIdle {
@@ -2996,7 +3067,13 @@ class ScrollableTest {
                 orientation = Orientation.Horizontal,
             )
         }
-        rule.onNodeWithTag(scrollableBoxTag).sendIndirectSwipeForward(rule)
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(start = startOffsetForXAxisMovement, end = endOffsetForXAxisMovement)
+        }
         rule.waitForIdle()
         assertThat(flingCalled).isEqualTo(1)
         assertThat(flingVelocity).isNonZero()
@@ -3007,7 +3084,14 @@ class ScrollableTest {
         flingCalled = 0
         flingVelocity = 0.0f
 
-        rule.onNodeWithTag(scrollableBoxTag).sendIndirectSwipeBackward(rule)
+        // Swipe back
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(start = endOffsetForXAxisMovement, end = startOffsetForXAxisMovement)
+        }
         rule.waitForIdle()
         assertThat(flingCalled).isEqualTo(1)
         assertThat(flingVelocity).isNonZero()
@@ -3534,7 +3618,14 @@ class ScrollableTest {
 
         rule.runOnIdle { assertThat(focusRequester.requestFocus()).isTrue() }
 
-        rule.onRoot().sendIndirectSwipeForward(rule)
+        // Swipe forward
+        rule.sendIndirectPointerInput(
+            indirectPointerEventPrimaryDirectionalMotionAxis =
+                IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+            inputDeviceSize = horizontalExternalInputDeviceSize,
+        ) {
+            swipe(start = startOffsetForXAxisMovement, end = endOffsetForXAxisMovement)
+        }
 
         rule.runOnIdle {
             assertThat(consumedOuter).isEqualTo(consumedInner)
@@ -3990,30 +4081,18 @@ class ScrollableTest {
             )
         }
 
-        rule
-            .onNodeWithTag(scrollableBoxTag)
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy))
-        rule
-            .onNodeWithTag(scrollableBoxTag)
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollByOffset))
+        rule.onNodeWithTag(scrollableBoxTag).assert(SemanticsMatcher.keyIsDefined(ScrollBy))
+        rule.onNodeWithTag(scrollableBoxTag).assert(SemanticsMatcher.keyIsDefined(ScrollByOffset))
 
         rule.runOnIdle { enabled = false }
 
-        rule
-            .onNodeWithTag(scrollableBoxTag)
-            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.ScrollBy))
-        rule
-            .onNodeWithTag(scrollableBoxTag)
-            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.ScrollByOffset))
+        rule.onNodeWithTag(scrollableBoxTag).assert(SemanticsMatcher.keyNotDefined(ScrollBy))
+        rule.onNodeWithTag(scrollableBoxTag).assert(SemanticsMatcher.keyNotDefined(ScrollByOffset))
 
         rule.runOnIdle { enabled = true }
 
-        rule
-            .onNodeWithTag(scrollableBoxTag)
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy))
-        rule
-            .onNodeWithTag(scrollableBoxTag)
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollByOffset))
+        rule.onNodeWithTag(scrollableBoxTag).assert(SemanticsMatcher.keyIsDefined(ScrollBy))
+        rule.onNodeWithTag(scrollableBoxTag).assert(SemanticsMatcher.keyIsDefined(ScrollByOffset))
     }
 
     @Test
@@ -4109,7 +4188,7 @@ class ScrollableTest {
         outerStateDeltas = 0f
 
         rule.runOnIdle {
-            flingJob?.cancel() // cancel job mid fling
+            flingJob?.cancel() // cancel job mid-fling
 
             // try to run fling again
             scope.launch {
@@ -4213,7 +4292,7 @@ class ScrollableTest {
 }
 
 // Very low tolerance on the difference
-internal val VelocityTrackerCalculationThreshold = 1
+internal const val VelocityTrackerCalculationThreshold = 1
 
 @OptIn(ExperimentalComposeUiApi::class)
 internal suspend fun savePointerInputEvents(
@@ -4236,6 +4315,71 @@ internal suspend fun savePointerInputEvents(
                         }
 
                         event = currentEvent
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+internal suspend fun saveTrackpadInputEvents(
+    tracker: DifferentialVelocityTracker,
+    pointerInputScope: PointerInputScope,
+) {
+    suspend fun AwaitPointerEventScope.awaitPanEvent(): PointerEvent {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Main)
+            when (event.type) {
+                PointerEventType.PanStart,
+                PointerEventType.PanMove,
+                PointerEventType.PanEnd -> return event
+            }
+        }
+    }
+
+    with(pointerInputScope) {
+        coroutineScope {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPanEvent()
+                    val change = event.changes.firstOrNull()
+                    if (change != null) {
+                        change.historical.fastForEach {
+                            tracker.addDelta(it.uptimeMillis, it.panOffset)
+                        }
+                        tracker.addDelta(change.uptimeMillis, change.panOffset)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+internal suspend fun saveScrollInputEvents(
+    tracker: DifferentialVelocityTracker,
+    scrollConfig: ScrollConfig,
+    pointerInputScope: PointerInputScope,
+) {
+    suspend fun AwaitPointerEventScope.awaitScrollEvent(): PointerEvent {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Main)
+            if (event.type == PointerEventType.Scroll) return event
+        }
+    }
+
+    with(pointerInputScope) {
+        coroutineScope {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitScrollEvent()
+                    val change = event.changes.firstOrNull() ?: continue
+                    with(scrollConfig) {
+                        tracker.addDelta(
+                            timeMillis = change.uptimeMillis,
+                            delta = calculateMouseWheelScroll(event, size),
+                        )
                     }
                 }
             }

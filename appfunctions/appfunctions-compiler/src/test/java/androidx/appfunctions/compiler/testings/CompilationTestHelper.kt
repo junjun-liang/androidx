@@ -69,14 +69,26 @@ class CompilationTestHelper(
     fun compileAll(
         sourceFileNames: List<String>,
         processorOptions: Map<String, String> = emptyMap<String, String>(),
+        additionalClasspath: List<File> = emptyList(),
     ): CompilationReport {
         val sources =
             sourceFileNames.map { sourceFileName ->
                 val sourceFile = getTestSourceFile(sourceFileName)
-                Source.Companion.kotlin(
-                    ensureKotlinFileNameFormat(sourceFileName),
-                    sourceFile.readText(),
-                )
+                if (sourceFile.name.lowercase().endsWith("kt")) {
+                    Source.Companion.kotlin(
+                        ensureKotlinFileNameFormat(sourceFileName),
+                        sourceFile.readText(),
+                    )
+                } else if (sourceFile.name.lowercase().endsWith("java")) {
+                    Source.Companion.java(
+                        ensureJavaFileNameFormat(sourceFileName),
+                        sourceFile.readText(),
+                    )
+                } else {
+                    throw IllegalArgumentException(
+                        "$sourceFileName must be either Kotlin or Java file."
+                    )
+                }
             } +
                 stubSourceFileNames.map { stubSourceFileName ->
                     val stubSourceFile = getTestSourceFile(stubSourceFileName)
@@ -95,6 +107,7 @@ class CompilationTestHelper(
                     sources = sources,
                     symbolProcessorProviders = symbolProcessorProviders,
                     processorOptions = processorOptions,
+                    classpath = additionalClasspath,
                     kotlincArguments = listOf("-jvm-target", "11"),
                 ),
             )
@@ -225,9 +238,17 @@ class CompilationTestHelper(
         require(nameParts.last().lowercase() == "kt") {
             "Source file $sourceFileName is not a Kotlin file"
         }
-        val fileNameWithoutExtension =
-            nameParts.joinToString(separator = ".", limit = nameParts.size - 1)
+        val fileNameWithoutExtension = nameParts.dropLast(1).joinToString(separator = ".")
         return "${fileNameWithoutExtension}.kt"
+    }
+
+    private fun ensureJavaFileNameFormat(sourceFileName: String): String {
+        val nameParts = sourceFileName.split(".")
+        require(nameParts.last().lowercase() == "java") {
+            "Source file $sourceFileName is not a Java file"
+        }
+        val fileNameWithoutExtension = nameParts.dropLast(1).joinToString(separator = ".")
+        return fileNameWithoutExtension.replace('/', '.')
     }
 
     private fun getTestSourceFile(fileName: String): File {
@@ -262,6 +283,8 @@ class CompilationTestHelper(
         val diagnostics: Map<Diagnostic.Kind, List<DiagnosticMessage>>,
         /** A list of generated source files. */
         val generatedResourceFiles: List<GeneratedResourceFile>,
+        /** List of classpath folders that contain the produced .class files. */
+        val outputClasspath: List<File>,
     ) {
         /** Print the diagnostics result of type [kind]. */
         fun printDiagnostics(kind: Diagnostic.Kind): String {
@@ -287,6 +310,7 @@ class CompilationTestHelper(
                         result.generatedResources.map { resource ->
                             GeneratedResourceFile.create(resource, outputDir)
                         },
+                    outputClasspath = result.outputClasspath,
                 )
             }
         }

@@ -66,7 +66,7 @@ class SpatialEnvironmentTest {
     private lateinit var gltfModelEntity: GltfModelEntity
 
     @Before
-    fun setUp() = runBlocking {
+    fun setUp(): Unit = runBlocking {
         val testDispatcher = StandardTestDispatcher()
         val result = Session.create(activity, testDispatcher)
 
@@ -322,7 +322,7 @@ class SpatialEnvironmentTest {
     }
 
     @Test
-    fun isPreferredSpatialEnvironmentActive_callsRuntimeisPreferredSpatialEnvironmentActive() {
+    fun isPreferredSpatialEnvironmentActive_callsRuntimeIsPreferredSpatialEnvironmentActive() {
         fakeEnvironment.spatialEnvironmentChangedListenerMap.forEach { (consumer, executor) ->
             executor.execute { consumer.accept(true) }
         }
@@ -331,7 +331,7 @@ class SpatialEnvironmentTest {
     }
 
     @Test
-    fun addSpatialEnvironmentChangedListener_ReceivesRuntimeEnvironmentOnEnvironmentChangedEvents() {
+    fun addSpatialEnvironmentChangedListener_receivesRuntimeOnEnvironmentChangedEvents() {
         var listenerCalled = false
         val listener = Consumer<Boolean> { called: Boolean -> listenerCalled = called }
         environment!!.addSpatialEnvironmentChangedListener(listener)

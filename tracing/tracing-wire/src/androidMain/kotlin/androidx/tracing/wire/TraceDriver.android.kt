@@ -23,24 +23,17 @@ import android.app.Application
 import android.content.Context
 import android.os.Build
 import android.os.Process
-import android.util.Log
-import androidx.annotation.GuardedBy
 import androidx.annotation.RestrictTo
 import androidx.annotation.RestrictTo.Scope
-import androidx.annotation.VisibleForTesting
-import androidx.startup.AppInitializer
 import androidx.tracing.AbstractTraceDriver
 import androidx.tracing.AbstractTraceSink
 import androidx.tracing.EmptyTraceContext
 import androidx.tracing.EmptyTraceSink
 import androidx.tracing.PerfettoTracer
 import androidx.tracing.Trace
-import androidx.tracing.Trace.TAG
 import androidx.tracing.TraceAttributes
 import androidx.tracing.TraceContext
 import androidx.tracing.Tracer
-import androidx.tracing.profiler.ConnectedProfilerTracing.disableTracing
-import androidx.tracing.profiler.ConnectedProfilerTracingInitializer
 
 /**
  * Constructs a [TraceDriver] instance on Android.
@@ -133,7 +126,9 @@ internal constructor(
             // This is only used to eagerly create the ThreadTrack for the main thread.
             // On Android, pid == tid for main thread.
             val longPid = pid.toLong()
-            val processName = getProcessName(context = contextProvider().applicationContext)
+            // Don't call contextProvider().applicationContext, because this code might be
+            // running prior to Application.onCreate().
+            val processName = getProcessName(context = contextProvider())
             // Eagerly populate a process track
             this.context.createProcessTrack(id = pid, name = processName)
             // Eager populate the main thread track
@@ -176,19 +171,6 @@ internal constructor(
     }
 
     public actual companion object {
-        private val lock: Any = Any()
-        @GuardedBy("lock") private var traceDriver: AbstractTraceDriver? = null
-
-        @VisibleForTesting
-        @RestrictTo(Scope.LIBRARY_GROUP)
-        public fun resetTraceDriver(context: Context) {
-            synchronized(lock) {
-                traceDriver = null
-                // Reset disabled state
-                disableTracing(context)
-            }
-        }
-
         private val stubTraceDriver =
             TraceDriver(
                 contextProvider = { throw IllegalStateException("Should never happen") },
@@ -201,43 +183,6 @@ internal constructor(
         @JvmStatic
         public actual fun getStubTraceDriver(): TraceDriver {
             return stubTraceDriver
-        }
-
-        /**
-         * @param context The Android application context
-         * @return The [AbstractTraceDriver] instance that can be used for in-process tracing. If
-         *   the [android.content.Context] provides an implementation for
-         *   [AbstractTraceDriver.Factory], that will be used for in-process tracing. Otherwise, we
-         *   fallback to a default implementation of [AbstractTraceDriver] that uses the Perfetto
-         *   trace format under the hood.
-         */
-        @RestrictTo(Scope.LIBRARY_GROUP)
-        public fun getTraceDriver(context: Context): AbstractTraceDriver? {
-            val driver = traceDriver
-            if (driver != null) return driver
-            return synchronized(lock) {
-                // If the application subtype provides a custom implementation of an
-                // AbstractTraceDriver, use it. Otherwise, fallback to the default initializer.
-                val provider =
-                    // Support both ContextWrappers and applicationContext based lookups.
-                    context as? Factory<*> ?: context.applicationContext as? Factory<*>
-                val provided = provider?.create() ?: defaultTraceDriver(context)
-                if (provided != null) {
-                    Log.d(TAG, "Tracing initialized.")
-                    traceDriver = provided
-                }
-                provided
-            }
-        }
-
-        private fun defaultTraceDriver(context: Context): TraceDriver? {
-            val initializer = AppInitializer.getInstance(context)
-            val klass = ConnectedProfilerTracingInitializer::class.java
-            return if (initializer.isEagerlyInitialized(klass)) {
-                initializer.initializeComponent(klass)
-            } else {
-                null
-            }
         }
     }
 }

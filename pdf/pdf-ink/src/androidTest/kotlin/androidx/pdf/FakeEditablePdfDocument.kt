@@ -30,10 +30,13 @@ import android.util.SparseArray
 import androidx.annotation.OpenForTesting
 import androidx.annotation.RequiresExtension
 import androidx.pdf.PdfDocument.Companion.LINEARIZATION_STATUS_UNKNOWN
-import androidx.pdf.annotation.KeyedPdfAnnotation
-import androidx.pdf.annotation.models.KeyedPdfObject
-import androidx.pdf.annotation.models.PdfAnnotation
-import androidx.pdf.annotation.models.PdfObject
+import androidx.pdf.annotation.content.InsertDraftEditOperation
+import androidx.pdf.annotation.content.KeyedPdfAnnotation
+import androidx.pdf.annotation.content.KeyedPdfObject
+import androidx.pdf.annotation.content.PdfAnnotation
+import androidx.pdf.annotation.content.PdfObject
+import androidx.pdf.annotation.content.RemoveDraftEditOperation
+import androidx.pdf.annotation.content.UpdateDraftEditOperation
 import androidx.pdf.content.PageMatchBounds
 import androidx.pdf.content.PageSelection
 import androidx.pdf.content.PdfPageGotoLinkContent
@@ -56,11 +59,6 @@ import kotlinx.coroutines.withTimeout
 internal open class FakeEditablePdfDocument(
     internal val pages: List<Point?> = listOf(Point(600, 800)),
     override val formType: Int = PDF_FORM_TYPE_NONE,
-    @Deprecated(
-        "Deprecated, Use linearizationStatus instead",
-        replaceWith = ReplaceWith("linearizationStatus"),
-    )
-    override val isLinearized: Boolean = false,
     override val renderParams: RenderParams = RenderParams(RenderParams.RENDER_MODE_FOR_DISPLAY),
     private val searchResults: SparseArray<List<PageMatchBounds>> = SparseArray(),
     override val uri: Uri = Uri.parse("content://test.app/document.pdf"),
@@ -69,6 +67,7 @@ internal open class FakeEditablePdfDocument(
     private val pageFormWidgetInfos: Map<Int, List<FormWidgetInfo>> = mapOf(),
     initialEdits: List<PdfAnnotation> = emptyList(),
     override val linearizationStatus: Int = LINEARIZATION_STATUS_UNKNOWN,
+    private val unsupportedFeatures: Set<PdfFeature> = emptySet(),
 ) : EditablePdfDocument {
     override val pageCount: Int = pages.size
 
@@ -187,18 +186,15 @@ internal open class FakeEditablePdfDocument(
         pageNumber: Int,
         start: PointF,
         stop: PointF,
-    ): PageSelection {
-        val selectedTextContents =
-            if (textContents.isEmpty()) {
-                listOf(PdfPageTextContent(listOf(RectF(0f, 0f, 10f, 10f)), "test"))
-            } else {
-                listOf(textContents[pageNumber])
-            }
+    ): PageSelection? {
+        if (textContents.isEmpty() || pageNumber >= textContents.size) {
+            return null
+        }
         return PageSelection(
             pageNumber,
             SelectionBoundary(0),
             SelectionBoundary(0),
-            selectedTextContents,
+            listOf(textContents[pageNumber]),
         )
     }
 
@@ -207,14 +203,11 @@ internal open class FakeEditablePdfDocument(
         pageNumber: Int,
         start: SelectionBoundary,
         stop: SelectionBoundary,
-    ): PageSelection {
-        val selectedTextContents =
-            if (textContents.isEmpty()) {
-                listOf(PdfPageTextContent(listOf(RectF(0f, 0f, 10f, 10f)), "test"))
-            } else {
-                listOf(textContents[pageNumber])
-            }
-        return PageSelection(pageNumber, start, stop, selectedTextContents)
+    ): PageSelection? {
+        if (textContents.isEmpty() || pageNumber >= textContents.size) {
+            return null
+        }
+        return PageSelection(pageNumber, start, stop, listOf(textContents[pageNumber]))
     }
 
     override suspend fun getSelectAllSelectionBounds(pageNumber: Int): PageSelection? {
@@ -306,14 +299,14 @@ internal open class FakeEditablePdfDocument(
         override fun close() {}
     }
 
-    override fun addOnEditsAppliedListener(
+    override fun addOnEditAppliedListener(
         executor: Executor,
-        listener: PdfDocument.OnEditsAppliedListener,
+        listener: PdfDocument.OnEditAppliedListener,
     ) {
         TODO("Not yet implemented")
     }
 
-    override fun removeOnEditsAppliedListener(listener: PdfDocument.OnEditsAppliedListener) {
+    override fun removeOnEditAppliedListener(listener: PdfDocument.OnEditAppliedListener) {
         TODO("Not yet implemented")
     }
 
@@ -327,7 +320,7 @@ internal open class FakeEditablePdfDocument(
     ) {}
 
     override fun isFeatureSupported(feature: PdfFeature): Boolean {
-        return true
+        return !unsupportedFeatures.contains(feature)
     }
 
     override fun createWriteHandle(): PdfWriteHandle {

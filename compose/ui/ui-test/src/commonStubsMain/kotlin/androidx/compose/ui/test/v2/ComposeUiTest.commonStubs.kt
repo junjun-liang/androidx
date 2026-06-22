@@ -30,3 +30,9 @@ actual fun runComposeUiTest(
     testTimeout: Duration,
     block: suspend ComposeUiTest.() -> Unit,
 ): TestResult = implementedInJetBrainsFork()
+
+@ExperimentalTestApi
+actual fun runComposeUiTest(
+    config: ComposeTestConfig,
+    block: suspend ComposeUiTest.() -> Unit,
+): TestResult = implementedInJetBrainsFork()

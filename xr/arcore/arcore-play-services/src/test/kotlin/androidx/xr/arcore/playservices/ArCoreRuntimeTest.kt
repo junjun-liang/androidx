@@ -19,11 +19,13 @@ package androidx.xr.arcore.playservices
 import android.app.Activity
 import android.util.Range
 import androidx.kruth.assertThrows
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.xr.runtime.AnchorPersistenceMode
 import androidx.xr.runtime.Config
 import androidx.xr.runtime.DepthEstimationMode
+import androidx.xr.runtime.DeviceTrackingMode
 import androidx.xr.runtime.FaceTrackingMode
 import androidx.xr.runtime.HandTrackingMode
 import androidx.xr.runtime.PlaneTrackingMode
@@ -65,8 +67,10 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowSensor
 
-@OptIn(ExperimentalCoroutinesApi::class, androidx.xr.runtime.PreviewSpatialApi::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class ArCoreRuntimeTest {
 
@@ -106,7 +110,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        val config = Config()
+        val config = Config.Builder().build()
         underTest.configure(config)
 
         assertThat(underTest.config).isEqualTo(config)
@@ -119,7 +123,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        underTest.configure(Config())
+        underTest.configure(Config.Builder().build())
 
         val argumentCaptor = argumentCaptor<TextureUpdateMode>()
         verify(mockArConfig).setTextureUpdateMode(argumentCaptor.capture())
@@ -133,7 +137,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        underTest.configure(Config())
+        underTest.configure(Config.Builder().build())
 
         val argumentCaptor = argumentCaptor<TextureUpdateMode>()
         verify(mockArConfig).setTextureUpdateMode(argumentCaptor.capture())
@@ -146,7 +150,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        val config = Config(faceTracking = FaceTrackingMode.DISABLED)
+        val config = Config.Builder().setFaceTracking(FaceTrackingMode.DISABLED).build()
         underTest.configure(config)
 
         val argumentCaptor = argumentCaptor<ArConfig.AugmentedFaceMode>()
@@ -161,7 +165,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        val config = Config(faceTracking = FaceTrackingMode.MESHES)
+        val config = Config.Builder().setFaceTracking(FaceTrackingMode.MESHES).build()
         underTest.configure(config)
 
         val argumentCaptor = argumentCaptor<ArConfig.AugmentedFaceMode>()
@@ -176,7 +180,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        val config = Config(faceTracking = FaceTrackingMode.BLEND_SHAPES)
+        val config = Config.Builder().setFaceTracking(FaceTrackingMode.BLEND_SHAPES).build()
 
         assertThrows<UnsupportedOperationException> { underTest.configure(config) }
     }
@@ -187,7 +191,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        val config = Config(planeTracking = PlaneTrackingMode.DISABLED)
+        val config = Config.Builder().setPlaneTracking(PlaneTrackingMode.DISABLED).build()
         underTest.configure(config)
 
         val argumentCaptor = argumentCaptor<PlaneFindingMode>()
@@ -202,7 +206,8 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        val config = Config(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL)
+        val config =
+            Config.Builder().setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL).build()
         underTest.configure(config)
 
         val argumentCaptor = argumentCaptor<PlaneFindingMode>()
@@ -218,7 +223,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        val config = Config(augmentedImageDatabase = null)
+        val config = Config.Builder().setAugmentedImageDatabase(null).build()
         underTest.configure(config)
 
         assertThat(mockArConfig.augmentedImageDatabase).isEqualTo(null)
@@ -231,7 +236,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        val config = Config(handTracking = HandTrackingMode.BOTH)
+        val config = Config.Builder().setHandTracking(HandTrackingMode.BOTH).build()
         assertFailsWith<UnsupportedOperationException> { underTest.configure(config) }
     }
 
@@ -241,7 +246,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        val config = Config(depthEstimation = DepthEstimationMode.SMOOTH_AND_RAW)
+        val config = Config.Builder().setDepthEstimation(DepthEstimationMode.SMOOTH_AND_RAW).build()
         underTest.configure(config)
 
         assertThat(underTest.config.depthEstimation).isEqualTo(DepthEstimationMode.SMOOTH_AND_RAW)
@@ -253,7 +258,7 @@ class ArCoreRuntimeTest {
         underTest._session = mockSession
         whenever(mockSession.config).thenReturn(mockArConfig)
 
-        val config = Config(anchorPersistence = AnchorPersistenceMode.LOCAL)
+        val config = Config.Builder().setAnchorPersistence(AnchorPersistenceMode.LOCAL).build()
         assertFailsWith<UnsupportedOperationException> { underTest.configure(config) }
     }
 
@@ -265,7 +270,7 @@ class ArCoreRuntimeTest {
         whenever(mockSession.configure(any()))
             .doThrow(FineLocationPermissionNotGrantedException("Test Exception"))
 
-        val config = Config()
+        val config = Config.Builder().build()
         assertFailsWith<SecurityException> { underTest.configure(config) }
 
         verify(mockSession).configure(mockArConfig)
@@ -279,7 +284,7 @@ class ArCoreRuntimeTest {
         whenever(mockSession.configure(any()))
             .doThrow(ARCore1xGooglePlayServicesLocationLibraryNotLinkedException("Test Exception"))
 
-        val config = Config()
+        val config = Config.Builder().build()
         assertFailsWith<LibraryNotLinkedException> { underTest.configure(config) }
         verify(mockSession).configure(mockArConfig)
     }
@@ -292,7 +297,7 @@ class ArCoreRuntimeTest {
         whenever(mockSession.configure(any()))
             .doThrow(UnsupportedConfigurationException("Test Exception"))
 
-        val config = Config()
+        val config = Config.Builder().build()
         assertFailsWith<UnsupportedOperationException> { underTest.configure(config) }
         verify(mockSession).configure(mockArConfig)
     }
@@ -367,9 +372,9 @@ class ArCoreRuntimeTest {
     @Test
     fun update_delaysForExpectedTimeBetweenFrames() {
         val mockFrame = mock<Frame>()
+        val mockCameraConfig = mock<CameraConfig>()
         whenever(mockFrame.camera).thenReturn(mockCamera)
         whenever(mockSession.update()).thenReturn(mockFrame)
-        val mockCameraConfig = mock<CameraConfig>()
         whenever(mockSession.cameraConfig).thenReturn(mockCameraConfig)
         whenever(mockCameraConfig.fpsRange).thenReturn(Range(MIN_FPS, MAX_FPS))
         underTest._session = mockSession
@@ -377,17 +382,18 @@ class ArCoreRuntimeTest {
         underTest.resume()
 
         runTest {
-            var updateHasReturned: Boolean = false
+            var wasUpdated = false
             launch {
                 underTest.update()
-                updateHasReturned = true
+                wasUpdated = true
             }
 
-            val avgFps = (MIN_FPS + MAX_FPS) / 2
-            advanceTimeBy(1000L / avgFps / 2)
-            assertThat(updateHasReturned).isFalse()
-            advanceTimeBy(1000L / avgFps)
-            assertThat(updateHasReturned).isTrue()
+            val expectedDelayMs = 1000L / ((MIN_FPS + MAX_FPS) / 2)
+            advanceTimeBy(expectedDelayMs - 1)
+            assertThat(wasUpdated).isFalse()
+
+            advanceTimeBy(2)
+            assertThat(wasUpdated).isTrue()
         }
     }
 
@@ -472,5 +478,99 @@ class ArCoreRuntimeTest {
 
             testBody()
         }
+    }
+
+    @Test
+    fun resume_withInertialTracking_registersSensorListener() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val sensorManager =
+            context.getSystemService(android.content.Context.SENSOR_SERVICE)
+                as android.hardware.SensorManager
+        val shadowSensorManager = shadowOf(sensorManager)
+        shadowSensorManager.addSensor(
+            ShadowSensor.newInstance(android.hardware.Sensor.TYPE_GAME_ROTATION_VECTOR)
+        )
+        val perceptionManager = ArCorePerceptionManager(timeSource)
+        val runtime = ArCoreRuntime(context, perceptionManager, timeSource, mockArCoreApk)
+        val mockArConfig = mock<ArConfig>()
+        runtime._session = mockSession
+        whenever(mockSession.config).thenReturn(mockArConfig)
+
+        runtime.configure(Config(deviceTracking = createInertialDeviceTrackingMode()))
+        runtime.resume()
+
+        assertThat(shadowSensorManager.listeners).hasSize(1)
+        runtime.destroy()
+    }
+
+    @Test
+    fun pauseAndDestroy_withInertialTracking_unregistersSensorListener() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val sensorManager =
+            context.getSystemService(android.content.Context.SENSOR_SERVICE)
+                as android.hardware.SensorManager
+        val shadowSensorManager = shadowOf(sensorManager)
+        shadowSensorManager.addSensor(
+            ShadowSensor.newInstance(android.hardware.Sensor.TYPE_GAME_ROTATION_VECTOR)
+        )
+        val perceptionManager = ArCorePerceptionManager(timeSource)
+        val runtime = ArCoreRuntime(context, perceptionManager, timeSource, mockArCoreApk)
+        val mockArConfig = mock<ArConfig>()
+        runtime._session = mockSession
+        whenever(mockSession.config).thenReturn(mockArConfig)
+
+        runtime.configure(Config(deviceTracking = createInertialDeviceTrackingMode()))
+        runtime.resume()
+        assertThat(shadowSensorManager.listeners).hasSize(1)
+
+        runtime.pause()
+        assertThat(shadowSensorManager.listeners).isEmpty()
+
+        runtime.destroy()
+    }
+
+    private fun createInertialDeviceTrackingMode(): DeviceTrackingMode {
+        val constructor =
+            DeviceTrackingMode::class.java.getDeclaredConstructor(Int::class.javaPrimitiveType!!)
+        constructor.isAccessible = true
+        return constructor.newInstance(2)
+    }
+
+    @Test
+    fun parseSessionFeaturesFromManifest_withFeatures_returnsArray() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val shadowPackageManager = shadowOf(context.packageManager)
+        val packageInfo = android.content.pm.PackageInfo()
+        packageInfo.packageName = context.packageName
+        val appInfo = android.content.pm.ApplicationInfo()
+        appInfo.packageName = context.packageName
+        appInfo.metaData =
+            android.os.Bundle().apply {
+                putString("com.google.ar.core.SESSION_FEATURES", "MOTION_TRACKING_ODOMETRY")
+            }
+        packageInfo.applicationInfo = appInfo
+        shadowPackageManager.installPackage(packageInfo)
+
+        val features = ArCoreRuntime.parseSessionFeaturesFromManifest(context)
+
+        // 6 corresponds to com.google.ar.core.Session.Feature.MOTION_TRACKING_ODOMETRY
+        assertThat(features).asList().containsExactly(6, 0).inOrder()
+    }
+
+    @Test
+    fun parseSessionFeaturesFromManifest_withoutFeatures_returnsEmptyArray() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val shadowPackageManager = shadowOf(context.packageManager)
+        val packageInfo = android.content.pm.PackageInfo()
+        packageInfo.packageName = context.packageName
+        val appInfo = android.content.pm.ApplicationInfo()
+        appInfo.packageName = context.packageName
+        // Intentionally leave metaData null
+        packageInfo.applicationInfo = appInfo
+        shadowPackageManager.installPackage(packageInfo)
+
+        val features = ArCoreRuntime.parseSessionFeaturesFromManifest(context)
+
+        assertThat(features).isEmpty()
     }
 }

@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+@file:kotlin.OptIn(
+    androidx.xr.scenecore.ExperimentalGltfAnimationApi::class,
+    androidx.xr.compose.subspace.ExperimentalSpatialGltfAnimationApi::class,
+)
+
 package androidx.xr.compose.testapp.spatialcompose
 
 import android.content.Intent
@@ -60,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,7 +78,6 @@ import androidx.xr.compose.spatial.Orbiter
 import androidx.xr.compose.spatial.OrbiterOffsetType
 import androidx.xr.compose.spatial.Subspace
 import androidx.xr.compose.subspace.AnchorPolicy
-import androidx.xr.compose.subspace.ResizePolicy
 import androidx.xr.compose.subspace.SceneCoreEntity
 import androidx.xr.compose.subspace.SpatialActivityPanel
 import androidx.xr.compose.subspace.SpatialAndroidViewPanel
@@ -83,8 +88,10 @@ import androidx.xr.compose.subspace.SpatialPanel
 import androidx.xr.compose.subspace.SubspaceComposable
 import androidx.xr.compose.subspace.draw.alpha
 import androidx.xr.compose.subspace.layout.PlaneOrientation
+import androidx.xr.compose.subspace.layout.ResizePolicy
 import androidx.xr.compose.subspace.layout.SpatialAlignment
 import androidx.xr.compose.subspace.layout.SpatialArrangement
+import androidx.xr.compose.subspace.layout.SpatialResizeEventType
 import androidx.xr.compose.subspace.layout.SpatialRoundedCornerShape
 import androidx.xr.compose.subspace.layout.SubspaceModifier
 import androidx.xr.compose.subspace.layout.aspectRatio
@@ -92,23 +99,22 @@ import androidx.xr.compose.subspace.layout.depth
 import androidx.xr.compose.subspace.layout.fillMaxHeight
 import androidx.xr.compose.subspace.layout.fillMaxWidth
 import androidx.xr.compose.subspace.layout.height
+import androidx.xr.compose.subspace.layout.movable
 import androidx.xr.compose.subspace.layout.offset
 import androidx.xr.compose.subspace.layout.padding
+import androidx.xr.compose.subspace.layout.resizable
 import androidx.xr.compose.subspace.layout.rotate
-import androidx.xr.compose.subspace.layout.transformingMovable
 import androidx.xr.compose.subspace.layout.width
 import androidx.xr.compose.subspace.semantics.testTag
 import androidx.xr.compose.testapp.common.AnotherActivity
 import androidx.xr.compose.testapp.ui.components.CommonTestScaffold
 import androidx.xr.compose.testapp.ui.components.TestDialog
-import androidx.xr.compose.unit.Meter.Companion.meters
 import androidx.xr.runtime.Config
 import androidx.xr.runtime.PlaneTrackingMode
 import androidx.xr.runtime.math.FloatSize3d
 import androidx.xr.runtime.math.Pose
 import androidx.xr.runtime.math.Quaternion
 import androidx.xr.runtime.math.Vector3
-import androidx.xr.scenecore.ExperimentalGltfComposeMethod
 import androidx.xr.scenecore.GltfAnimation.AnimationState
 import androidx.xr.scenecore.GltfAnimationStartOptions
 import androidx.xr.scenecore.GltfModel
@@ -132,12 +138,20 @@ class SpatialCompose : ComponentActivity() {
 
             // 3D Content
             Subspace {
+                val session = checkNotNull(LocalSession.current) { "session must be initialized" }
+                val density = LocalDensity.current
+                val pixelDensity = session.scene.virtualPixelDensity
                 PanelGrid()
                 XyzArrows(
-                    SubspaceModifier.width(.5.meters.toDp())
-                        .height(0.5.meters.toDp())
-                        .depth(0.5.meters.toDp())
-                        .offset(x = 1.meters.toDp(), z = -0.5.meters.toDp())
+                    with(density) {
+                        SubspaceModifier.width(pixelDensity.convertMetersToPixels(0.5f).toDp())
+                            .height(pixelDensity.convertMetersToPixels(0.5f).toDp())
+                            .depth(pixelDensity.convertMetersToPixels(0.5f).toDp())
+                            .offset(
+                                x = pixelDensity.convertMetersToPixels(1f).toDp(),
+                                z = pixelDensity.convertMetersToPixels(-0.5f).toDp(),
+                            )
+                    }
                 )
                 DragonEntity()
             }
@@ -263,7 +277,13 @@ class SpatialCompose : ComponentActivity() {
                     horizontalAlignment = SpatialAlignment.CenterHorizontally,
                     verticalArrangement = SpatialArrangement.Center,
                 ) {
-                    SpatialMainPanel(modifier = SubspaceModifier.fillMaxHeight(0.7f).fillMaxWidth())
+                    SpatialMainPanel(
+                        modifier =
+                            SubspaceModifier.fillMaxHeight(0.7f)
+                                .fillMaxWidth()
+                                .movable()
+                                .resizable()
+                    )
                     val intent = remember {
                         Intent(this@SpatialCompose, AnotherActivity::class.java)
                     }
@@ -276,7 +296,7 @@ class SpatialCompose : ComponentActivity() {
                             SubspaceModifier.fillMaxHeight()
                                 .fillMaxWidth()
                                 .testTag("ActivityPanel")
-                                .transformingMovable(),
+                                .movable(),
                     )
                 }
                 SpatialColumn(
@@ -303,13 +323,18 @@ class SpatialCompose : ComponentActivity() {
                 modifier
                     .testTag(text)
                     .alpha(alpha)
-                    .transformingMovable(enabled = !moveResizeLocked),
-            resizePolicy =
-                ResizePolicy(
-                    isEnabled = !moveResizeLocked,
-                    onResizeStart = { alpha = 0f },
-                    onResizeEnd = { alpha = 1f }, // setting the alpha here.. no pop!
-                ),
+                    .movable(enabled = !moveResizeLocked)
+                    .resizable(
+                        enabled = !moveResizeLocked,
+                        resizePolicy =
+                            ResizePolicy.default { event ->
+                                when (event.type) {
+                                    SpatialResizeEventType.Start -> alpha = 0f
+                                    SpatialResizeEventType.End -> alpha = 1f
+                                    else -> {}
+                                }
+                            },
+                    )
         ) {
             PanelContent { Text(text) }
 
@@ -338,7 +363,9 @@ class SpatialCompose : ComponentActivity() {
     fun AnchorPanel(modifier: SubspaceModifier = SubspaceModifier, text: String = "") {
         val session = LocalSession.current ?: return
         // This is required to use the AnchorPolicy.
-        session.configure(Config(planeTracking = PlaneTrackingMode.HORIZONTAL_AND_VERTICAL))
+        session.configure(
+            Config.Builder().setPlaneTracking(PlaneTrackingMode.HORIZONTAL_AND_VERTICAL).build()
+        )
 
         // TODO(b/424834805): It's possible to have multiple movable overloads in place which are
         // not compatible with each other.
@@ -423,8 +450,8 @@ class SpatialCompose : ComponentActivity() {
     @Composable
     fun DragonEntity() {
         val session = LocalSession.current ?: return
-        val dragonModel = remember { mutableStateOf<GltfModel?>(null) }
-        val dragonEntity = remember { mutableStateOf<GltfModelEntity?>(null) }
+        val dragonModel = remember(session) { mutableStateOf<GltfModel?>(null) }
+        val dragonEntity = remember(session) { mutableStateOf<GltfModelEntity?>(null) }
 
         val dragonAnimationState = remember {
             androidx.compose.runtime.mutableStateOf(AnimationState.STOPPED)
@@ -432,7 +459,7 @@ class SpatialCompose : ComponentActivity() {
         var entitySize by remember { mutableStateOf(FloatSize3d(1f, 1f, 1f)) }
 
         // Actions to run once.
-        LaunchedEffect(Unit) {
+        LaunchedEffect(session) {
             dragonModel.value =
                 GltfModel.create(session, Paths.get("models", "Dragon_Evolved.gltf"))
 
@@ -445,8 +472,8 @@ class SpatialCompose : ComponentActivity() {
                 )
 
             dragonEntity.value?.let { entity ->
-                val animation = entity.animations.find { it.name == "Fast_Flying" }
-                animation?.start(GltfAnimationStartOptions(shouldLoop = false))
+                val animation = entity.getAnimations().find { it.name == "Fast_Flying" }
+                animation?.start(GltfAnimationStartOptions(shouldLoop = true))
                 dragonAnimationState.value = animation?.animationState ?: AnimationState.STOPPED
             }
         }
@@ -455,7 +482,7 @@ class SpatialCompose : ComponentActivity() {
         LaunchedEffect(dragonEntity.value) {
             val entity = dragonEntity.value
             if (entity != null) {
-                val animation = entity.animations.find { it.name == "Fast_Flying" }
+                val animation = entity.getAnimations().find { it.name == "Fast_Flying" }
                 while (true) {
                     val currentState = animation?.animationState ?: AnimationState.STOPPED
 
@@ -464,7 +491,6 @@ class SpatialCompose : ComponentActivity() {
 
                     // 2. Only calculate the bounding box if the animation is actually playing.
                     if (currentState == AnimationState.PLAYING) {
-                        @OptIn(ExperimentalGltfComposeMethod::class)
                         entitySize = entity.getGltfModelBoundingBox().halfExtents.times(2f)
                     }
 
@@ -474,12 +500,18 @@ class SpatialCompose : ComponentActivity() {
         }
 
         if (dragonEntity.value != null) {
+            val density = LocalDensity.current
+            val pixelDensity = session.scene.virtualPixelDensity
             SceneCoreEntity(
                 factory = { dragonEntity.value!! },
                 modifier =
-                    SubspaceModifier.width(entitySize.width.meters.toDp())
-                        .height(entitySize.height.meters.toDp())
-                        .depth(entitySize.depth.meters.toDp()),
+                    with(density) {
+                        SubspaceModifier.width(
+                                pixelDensity.convertMetersToPixels(entitySize.width).toDp()
+                            )
+                            .height(pixelDensity.convertMetersToPixels(entitySize.height).toDp())
+                            .depth(pixelDensity.convertMetersToPixels(entitySize.depth).toDp())
+                    },
             )
         }
     }
@@ -488,9 +520,9 @@ class SpatialCompose : ComponentActivity() {
     fun XyzArrows(modifier: SubspaceModifier = SubspaceModifier) {
         val session = LocalSession.current ?: return
         var rotation by remember { mutableStateOf(Quaternion.Identity) }
-        var gltfModel by remember { mutableStateOf<GltfModel?>(null) }
+        var gltfModel by remember(session) { mutableStateOf<GltfModel?>(null) }
 
-        LaunchedEffect(Unit) {
+        LaunchedEffect(session) {
             gltfModel = GltfModel.create(session, Paths.get("models", "xyzArrows.glb"))
             val pi = 3.14159F
             val timeSource = Clock.systemUTC()

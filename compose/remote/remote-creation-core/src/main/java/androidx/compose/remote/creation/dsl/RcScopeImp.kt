@@ -24,6 +24,8 @@ import androidx.compose.remote.core.RemoteContext.FLOAT_OFFSET_TO_UTC
 import androidx.compose.remote.core.operations.BitmapFontData
 import androidx.compose.remote.core.operations.DrawTextOnCircle
 import androidx.compose.remote.core.operations.Utils
+import androidx.compose.remote.core.operations.layout.managers.Custom
+import androidx.compose.remote.core.semantics.AccessibleComponent
 import androidx.compose.remote.creation.Rc
 import androidx.compose.remote.creation.RcPaint
 import androidx.compose.remote.creation.RemoteComposeWriter
@@ -37,10 +39,10 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
         modifier: Modifier,
         horizontal: RcHorizontalPositioning,
         vertical: RcVerticalPositioning,
-        content: RcScope.() -> Unit,
+        content: RcBoxScope.() -> Unit,
     ) {
         writer.startBox(modifier.toRecordingModifier(), horizontal.value, vertical.value)
-        RcScopeImpl(writer).content()
+        RcBoxScopeImpl(writer).content()
         writer.endBox()
     }
 
@@ -63,6 +65,64 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
         writer.startStateLayout(modifier.toRecordingModifier(), stateIndex.id.toInt())
         RcScopeImpl(writer).content()
         writer.endStateLayout()
+    }
+
+    override fun Custom(
+        config: String,
+        properties: List<CustomProperty>,
+        modifier: Modifier,
+        content: RcScope.() -> Unit,
+    ) {
+        val corePropList: List<Custom.CustomProperty> =
+            properties.map {
+                when (it.mDataType) {
+                    CustomProperty.INT_PROP ->
+                        Custom.CustomProperty(
+                            it.mType,
+                            Custom.CustomProperty.INT_PROP,
+                            it.mIntValue,
+                        )
+
+                    CustomProperty.STRING_PROP ->
+                        Custom.CustomProperty(
+                            it.mType,
+                            Custom.CustomProperty.STRING_PROP,
+                            it.mIntValue,
+                        )
+
+                    CustomProperty.FLOAT_PROP ->
+                        Custom.CustomProperty(
+                            it.mType,
+                            Custom.CustomProperty.FLOAT_PROP,
+                            it.mFloatValue,
+                        )
+
+                    CustomProperty.FLOAT_RETURN ->
+                        Custom.CustomProperty(
+                            it.mType,
+                            Custom.CustomProperty.FLOAT_RETURN,
+                            it.mFloatValue,
+                        )
+
+                    CustomProperty.TEXT_RETURN ->
+                        Custom.CustomProperty(
+                            it.mType,
+                            Custom.CustomProperty.TEXT_RETURN,
+                            it.mIntValue,
+                        )
+
+                    else -> {
+                        throw RuntimeException("UNKNOWN TYPE")
+                    }
+                }
+            }
+        writer.startCustom(modifier.toRecordingModifier(), config, corePropList)
+        RcScopeImpl(writer).content()
+        writer.endCustom()
+    }
+
+    override fun RcRoot(content: RcScope.() -> Unit) {
+        writer.root { RcScopeImpl(writer).content() }
     }
 
     override fun Column(
@@ -149,12 +209,40 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
         writer.performHaptic(haptic.value)
     }
 
+    override fun addSound(data: ByteArray): RcSound = RcSound(writer.addSound(data))
+
+    override fun soundExpression(
+        type: RcSoundType,
+        frequency: Float,
+        durationSeconds: Float,
+        waveform: RcWaveform,
+        leftVolume: Float,
+        rightVolume: Float,
+        rate: Float,
+    ): RcSoundExpression {
+        return RcSoundExpression(
+            writer.addSoundExpression(
+                type.value,
+                frequency,
+                durationSeconds,
+                waveform.value,
+                leftVolume,
+                rightVolume,
+                rate,
+            )
+        )
+    }
+
+    override fun playSound(expression: RcSoundExpression) {
+        writer.playSound(expression.id)
+    }
+
     override fun wakeIn(seconds: Float) {
         writer.wakeIn(seconds)
     }
 
-    override fun getColorAttribute(baseColor: RcColor, type: RcColorAttr): RcFloat {
-        return RcFloat(writer, writer.getColorAttribute(baseColor.id, type.value))
+    override fun getColorAttribute(baseColor: RcColor, type: Short): RcFloat {
+        return RcFloat(writer, writer.getColorAttribute(baseColor.id, type))
     }
 
     override fun RcText.substring(start: RcFloat, len: RcFloat): RcText {
@@ -319,10 +407,21 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
         fontWeight: Float,
         textAlign: RcTextAlign,
         overflow: RcTextOverflow,
+        maxLines: Int,
         content: RcScope.() -> Unit,
     ) {
         val textId = writer.addText(text)
-        Text(RcText(textId), modifier, color, fontSize, fontWeight, textAlign, overflow)
+        Text(
+            RcText(textId),
+            modifier,
+            color,
+            fontSize,
+            fontWeight,
+            textAlign,
+            overflow,
+            maxLines,
+            content,
+        )
     }
 
     override fun Text(
@@ -333,60 +432,63 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
         fontWeight: Float,
         textAlign: RcTextAlign,
         overflow: RcTextOverflow,
+        maxLines: Int,
         content: RcScope.() -> Unit,
     ) {
-        if (color is RcColorValue) {
-            writer.textComponent(
-                modifier.toRecordingModifier(),
-                text.id,
-                -1, // textStyleId
-                0, // color
-                color.id,
-                fontSize.value,
-                -1f, // minFontSize
-                -1f, // maxFontSize
-                0, // fontStyle
-                fontWeight,
-                null, // fontFamily
-                textAlign.value,
-                overflow.value,
-                Int.MAX_VALUE, // maxLines
-                0f, // letterSpacing
-                0f, // lineHeightAdd
-                1f, // lineHeightMultiplier
-                0, // lineBreakStrategy
-                0, // hyphenationFrequency
-                0, // justificationMode
-                false, // underline
-                false, // strikethrough
-                null, // fontAxis
-                null, // fontAxisValues
-                false, // autosize
-                0, // flags
-            ) {
-                RcScopeImpl(writer).content()
+        // Resolve the color into a colorId (RcColor / RcColorValue) or a raw int.
+        // Previously RcColor fell into the `else` and rendered as default black —
+        // fixed here so the typed RcColor surface actually colors text.
+        val colorId: Int
+        val colorInt: Int
+        when (color) {
+            is RcColor -> {
+                colorId = color.id
+                colorInt = 0xFF000000.toInt()
             }
-        } else {
-            val colorInt =
-                when (color) {
-                    is Int -> color
-                    is Long -> color.toInt()
-                    else -> 0xFF000000.toInt()
-                }
-            writer.textComponent(
-                modifier.toRecordingModifier(),
-                text.id,
-                colorInt,
-                fontSize.value,
-                0,
-                fontWeight,
-                null,
-                textAlign.value,
-                overflow.value,
-                1,
-            ) {
-                RcScopeImpl(writer).content()
+            is RcColorValue -> {
+                colorId = color.id
+                colorInt = 0xFF000000.toInt()
             }
+            else -> {
+                colorId = -1
+                colorInt =
+                    when (color) {
+                        is Int -> color
+                        is Long -> color.toInt()
+                        else -> 0xFF000000.toInt()
+                    }
+            }
+        }
+
+        writer.textComponent(
+            modifier.toRecordingModifier(),
+            text.id,
+            -1, // textStyleId
+            colorInt, // color (default; ignored when colorId is set)
+            colorId,
+            fontSize.value,
+            -1f, // minFontSize
+            -1f, // maxFontSize
+            0, // fontStyle
+            fontWeight,
+            null, // fontFamily
+            textAlign.value,
+            overflow.value,
+            maxLines, // maxLines
+            0f, // letterSpacing
+            0f, // lineHeightAdd
+            1f, // lineHeightMultiplier
+            0, // lineBreakStrategy
+            0, // hyphenationFrequency
+            0, // justificationMode
+            false, // underline
+            false, // strikethrough
+            null, // fontAxis
+            null, // fontAxisValues
+            false, // autosize
+            0, // flags
+        ) {
+            RcScopeImpl(writer).content()
         }
     }
 
@@ -420,6 +522,12 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
 
     override fun applyPaint(block: RcPaint.() -> Unit) {
         writer.rcPaint.block()
+        writer.rcPaint.commit()
+    }
+
+    override fun paint(block: RcPaintScope.() -> Unit) {
+        val scope = RcPaintScopeImpl(writer.rcPaint)
+        scope.block()
         writer.rcPaint.commit()
     }
 
@@ -524,6 +632,25 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
 
     override fun remoteFloatArray(array: FloatArray): RcFloat =
         RcFloat(writer, writer.addFloatArray(array))
+
+    override fun addNamedFloatArray(name: String, array: FloatArray): RcFloat {
+        val id = RcFloat(writer, writer.addFloatArray(array))
+        writer.setFloatName(Utils.idFromNan(id.toArray()[0]), name)
+        return id
+    }
+
+    override fun RcFloat.named(name: String): RcFloat {
+        this@RcScopeImpl.writer.setFloatName(
+            Utils.idFromNan(this.withWriter(this@RcScopeImpl.writer).toFloat()),
+            name,
+        )
+        return this
+    }
+
+    override fun RcColor.named(name: String): RcColor {
+        writer.setColorName(this.id, name)
+        return this
+    }
 
     override fun animationTime(): RcFloat = RcFloat(writer, floatArrayOf(Rc.Time.ANIMATION_TIME))
 
@@ -686,15 +813,16 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
     override fun remoteNamedFloat(name: String, value: Float): RcFloat =
         RcFloat(writer, writer.addNamedFloat(name, value))
 
-    override fun remoteInteger(value: Int): RcInteger = RcInteger(writer.addInteger(value))
+    override fun remoteInteger(value: Int): RcInteger = RcInteger(writer.addInteger(value), writer)
 
     override fun remoteNamedInteger(name: String, value: Int): RcInteger =
-        RcInteger(writer.addNamedInt(name, value))
+        RcInteger(writer.addNamedInt(name, value), writer)
 
-    override fun remoteLong(value: Long): RcInteger = RcInteger(writer.addLong(value).toLong())
+    override fun remoteLong(value: Long): RcInteger =
+        RcInteger(writer.addLong(value).toLong(), writer)
 
     override fun remoteBoolean(value: Boolean): RcInteger =
-        RcInteger(writer.addBoolean(value).toLong())
+        RcInteger(writer.addBoolean(value).toLong(), writer)
 
     override fun remotePathData(path: RcPlatformServices.RcPathArrayCreator): RcPath =
         RcPath(writer.addPathData(path))
@@ -1110,8 +1238,79 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
         return RcShader(shader.commit())
     }
 
+    override fun shader(shaderString: String, block: RcShaderScope.() -> Unit): RcShader {
+        val shader = writer.createShader(shaderString)
+        val scope = RcShaderScopeImpl(shader)
+        scope.block()
+        return RcShader(shader.commit())
+    }
+
     override fun Float.format(whole: Int, decimal: Int, flags: Int): RcText {
         return RcText(writer.createTextFromFloat(this, whole, decimal, flags))
+    }
+
+    override infix fun RcText.merge(other: RcText): RcText {
+        return RcText(writer.textMerge(this.id, other.id))
+    }
+
+    override fun RcText.subtext(start: RcFloat, length: RcFloat): RcText {
+        return RcText(
+            writer.textSubtext(
+                this.id,
+                start.withWriter(writer).toFloat(),
+                length.withWriter(writer).toFloat(),
+            )
+        )
+    }
+
+    override fun RcText.subtext(start: Float, length: Float): RcText = subtext(start.rf, length.rf)
+
+    override val RcText.length: RcFloat
+        get() = RcFloat(writer, writer.textLength(this.id))
+
+    override fun defineMacro(
+        name: String,
+        parameters: List<String>,
+        content: RcScope.(Map<String, RcMacroArg>) -> Unit,
+    ): RcMacro {
+        val paramIds = parameters.map { writer.definePatternParameter(it) }.toIntArray()
+        val macroId = writer.definePattern(name, paramIds)
+        val argMap =
+            parameters
+                .mapIndexed { index, paramName -> paramName to RcMacroArg(paramIds[index]) }
+                .toMap()
+
+        content(argMap)
+        writer.endPatternDefine()
+        return RcMacro(macroId)
+    }
+
+    override fun RcMacro.inflate(arguments: Map<String, Any>) {
+        val argIds =
+            arguments.values
+                .map { valArg ->
+                    when (valArg) {
+                        is RcFloat -> writer.cacheData(valArg.id.toInt())
+                        is RcInteger -> writer.cacheData(valArg.id.toInt())
+                        is RcText -> valArg.id
+                        is RcColor -> valArg.id
+                        is Number -> writer.cacheData(valArg.toFloat().toInt())
+                        is String -> writer.addText(valArg)
+                        else -> writer.cacheData(valArg.hashCode())
+                    }
+                }
+                .toIntArray()
+        writer.addPatternInflation(this.id, argIds)
+    }
+
+    override fun RcMacroArg.insertArgument() {
+        writer.addPatternArgument(this.paramId)
+    }
+
+    override fun RcMacroArg.insertBlock(content: RcScope.() -> Unit) {
+        writer.addPatternBlock(this.paramId)
+        content()
+        writer.endPatternBlock()
     }
 
     override val Int.rf: RcFloat
@@ -1119,6 +1318,14 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
 
     override val Float.rf: RcFloat
         get() = RcFloat(writer, this)
+
+    override val Int.ri: RcInteger
+        get() = RcInteger(writer.addInteger(this), writer)
+
+    override val Boolean.rb: RcBool
+        get() = RcBool(writer.addBoolean(this).toLong())
+
+    override fun remoteBool(value: Boolean): RcBool = RcBool(writer.addBoolean(value).toLong())
 
     override fun RcPath.tween(path2: RcPath, tween: Float): RcPath {
         return RcPath(writer.pathTween(this.id, path2.id, tween))
@@ -1171,10 +1378,10 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
         return RcFloat(writer, writer.textLength(text.id))
     }
 
-    override fun timeAttribute(variable: RcInteger, type: RcTimeAttr, vararg args: Int): RcFloat {
+    override fun timeAttribute(variable: RcInteger, type: Short, vararg args: Int): RcFloat {
         return RcFloat(
             writer,
-            writer.timeAttribute((variable.id % 0x100000000L).toInt(), type.value, *args),
+            writer.timeAttribute((variable.id % 0x100000000L).toInt(), type, *args),
         )
     }
 
@@ -1196,13 +1403,13 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
     }
 
     override fun conditionalOperations(
-        type: RcConditionOp,
+        type: Byte,
         a: RcFloat,
         b: RcFloat,
         content: RcScope.() -> Unit,
     ) {
         writer.conditionalOperations(
-            type.value,
+            type,
             a.withWriter(writer).toFloat(),
             b.withWriter(writer).toFloat(),
         )
@@ -1339,14 +1546,14 @@ internal open class RcScopeImpl(internal val writer: RemoteComposeWriter) : RcSc
         )
     }
 
-    override fun skip(type: RcSkipKind, value: Int, block: RcScope.() -> Unit) {
-        val offset = writer.beginSkip(type.value, value)
+    override fun skip(type: Short, value: Int, block: RcScope.() -> Unit) {
+        val offset = writer.beginSkip(type, value)
         this.block()
         writer.endSkip(offset)
     }
 
-    override fun beginSkip(type: RcSkipKind, value: Int): Int {
-        return writer.beginSkip(type.value, value)
+    override fun beginSkip(type: Short, value: Int): Int {
+        return writer.beginSkip(type, value)
     }
 
     override fun endSkip(offset: Int) {
@@ -1411,6 +1618,8 @@ private class RcImpulseScopeImpl(writer: RemoteComposeWriter) :
     }
 }
 
+private class RcBoxScopeImpl(writer: RemoteComposeWriter) : RcScopeImpl(writer), RcBoxScope
+
 private class RcColumnScopeImpl(writer: RemoteComposeWriter) : RcScopeImpl(writer), RcColumnScope {
     override fun Modifier.weight(weight: Float): Modifier =
         then(WeightModifier(weight, vertical = true))
@@ -1438,7 +1647,7 @@ private class RcCollapsibleRowScopeImpl(writer: RemoteComposeWriter) :
         then(WeightModifier(weight, vertical = false))
 }
 
-private class RcCanvasScopeImpl(writer: RemoteComposeWriter) : RcScopeImpl(writer), RcCanvasScope {
+internal class RcCanvasScopeImpl(writer: RemoteComposeWriter) : RcScopeImpl(writer), RcCanvasScope {
     override val width: RcFloat
         get() = RcFloat(writer, writer.addComponentWidthValue())
 
@@ -1492,31 +1701,19 @@ private class RcCanvasScopeImpl(writer: RemoteComposeWriter) : RcScopeImpl(write
 
     override fun loop(
         start: RcFloat,
-        step: Float,
+        step: RcFloat,
         end: RcFloat,
         block: RcCanvasScope.(RcFloat) -> Unit,
     ) {
         val indexId = writer.textCreateId("index")
         val from: Float = start.withWriter(writer).toFloat()
+        val stepF: Float = step.withWriter(writer).toFloat()
         val until: Float = end.withWriter(writer).toFloat()
-        writer.loop(
-            indexId,
-            from,
-            step,
-            until,
-            object : RemoteComposeWriterInterface {
-                override fun run() {
-                    val v =
-                        androidx.compose.remote.creation.RFloat(
-                            writer,
-                            floatArrayOf(
-                                androidx.compose.remote.core.operations.Utils.asNan(indexId)
-                            ),
-                        )
-                    this@RcCanvasScopeImpl.block(RcFloat(writer, v.array))
-                }
-            },
-        )
+        writer.loop(indexId, from, stepF, until) {
+            val v =
+                androidx.compose.remote.creation.RFloat(writer, floatArrayOf(Utils.asNan(indexId)))
+            this@RcCanvasScopeImpl.block(RcFloat(writer, v.array))
+        }
     }
 
     override fun clipPath(path: RcPath) {
@@ -1549,4 +1746,112 @@ private class RcCanvasScopeImpl(writer: RemoteComposeWriter) : RcScopeImpl(write
             ),
         )
     }
+}
+
+internal class RcSemanticsScopeImpl(val writer: RemoteComposeWriter) : RcSemanticsScope {
+    var contentDescriptionId: Int = 0
+    var roleOrdinal: Byte = -1
+    var textId: Int = 0
+    var stateDescriptionId: Int = 0
+    var modeOrdinal: Int = 0
+    var enabledVal: Boolean = true
+    var clickableVal: Boolean = false
+
+    override fun contentDescription(text: String) {
+        contentDescriptionId = writer.textCreateId(text)
+    }
+
+    override fun contentDescription(text: RcText) {
+        contentDescriptionId = text.id
+    }
+
+    override fun role(role: AccessibleComponent.Role) {
+        roleOrdinal = role.ordinal.toByte()
+    }
+
+    override fun text(text: String) {
+        textId = writer.textCreateId(text)
+    }
+
+    override fun text(text: RcText) {
+        textId = text.id
+    }
+
+    override fun stateDescription(text: String) {
+        stateDescriptionId = writer.textCreateId(text)
+    }
+
+    override fun stateDescription(text: RcText) {
+        stateDescriptionId = text.id
+    }
+
+    override fun mode(mode: AccessibleComponent.Mode) {
+        modeOrdinal = mode.ordinal
+    }
+
+    override fun enabled(value: Boolean) {
+        enabledVal = value
+    }
+
+    override fun clickable(value: Boolean) {
+        clickableVal = value
+    }
+
+    fun build(): androidx.compose.remote.core.semantics.CoreSemantics {
+        val semantics = androidx.compose.remote.core.semantics.CoreSemantics()
+        semantics.mContentDescriptionId = contentDescriptionId
+        semantics.mRole =
+            if (roleOrdinal >= 0) AccessibleComponent.Role.fromInt(roleOrdinal.toInt()) else null
+        semantics.mTextId = textId
+        semantics.mStateDescriptionId = stateDescriptionId
+        semantics.mEnabled = enabledVal
+        semantics.mMode = AccessibleComponent.Mode.values()[modeOrdinal]
+        semantics.mClickable = clickableVal
+        return semantics
+    }
+}
+
+internal class RcLayoutScopeImpl(
+    val changes: androidx.compose.remote.creation.modifiers.ComponentLayoutChanges,
+    val writer: RemoteComposeWriter,
+) : RcLayoutScope {
+
+    private fun toRcFloat(num: Number): RcFloat {
+        val rFloat = num as androidx.compose.remote.creation.RFloat
+        return RcFloat(writer, rFloat.array)
+    }
+
+    private fun toRFloat(rcFloat: RcFloat): androidx.compose.remote.creation.RFloat {
+        return androidx.compose.remote.creation.RFloat(writer, rcFloat.toArray())
+    }
+
+    override var x: RcFloat
+        get() = toRcFloat(changes.getX())
+        set(value) {
+            changes.setX(toRFloat(value))
+        }
+
+    override var y: RcFloat
+        get() = toRcFloat(changes.getY())
+        set(value) {
+            changes.setY(toRFloat(value))
+        }
+
+    override var width: RcFloat
+        get() = toRcFloat(changes.getWidth())
+        set(value) {
+            changes.setWidth(toRFloat(value))
+        }
+
+    override var height: RcFloat
+        get() = toRcFloat(changes.getHeight())
+        set(value) {
+            changes.setHeight(toRFloat(value))
+        }
+
+    override val parentWidth: RcFloat
+        get() = toRcFloat(changes.getParentWidth())
+
+    override val parentHeight: RcFloat
+        get() = toRcFloat(changes.getParentHeight())
 }
